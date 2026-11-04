@@ -4,3 +4,4 @@ flask
 python-dotenv
 PyNaCl
 static-ffmpeg
+davey<0.2

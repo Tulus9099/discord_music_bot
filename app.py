@@ -1,5 +1,4 @@
 import asyncio
-import math
 import re
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from urllib.parse import urlparse
@@ -9,8 +8,6 @@ import state
 from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
-
-
 
 CATEGORY_NAME_RE = re.compile(r"^[a-z0-9_-]{1,50}$")
 ALLOWED_TRACK_HOSTS = {
@@ -22,14 +19,15 @@ ALLOWED_TRACK_HOSTS = {
 }
 MAX_TITLE_LENGTH = 200
 MAX_URL_LENGTH = 500
+STATUS_QUEUE_PREVIEW = 20
 STATE_CHANGING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 BOT_TIMEOUT = 15
 
 
-def run_async(coro):
+def run_async(coro, timeout=BOT_TIMEOUT):
     loop = discord_bot.bot.loop
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result(timeout=BOT_TIMEOUT)
+    return future.result(timeout=timeout)
 
 
 def call_in_loop(func, *args):
@@ -81,21 +79,31 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/favicon.ico", methods=["GET"])
+def favicon():
+    # The page uses an inline icon; this only stops browsers from logging 404s.
+    return "", 204
+
+
 @app.route("/api/status", methods=["GET"])
 def status():
     vc = state.bot_state["voice_client"]
-    current = state.bot_state["current_track"]
+    connected = vc is not None and vc.is_connected()
+    queue = list(state.bot_state["queue"])
     return jsonify({
-        "connected": vc is not None and vc.is_connected(),
+        "connected": connected,
         "is_playing": state.bot_state["is_playing"],
         "is_paused": vc.is_paused() if vc else False,
-        "current_track": current,
+        "current_track": state.bot_state["current_track"],
         "current_category": state.bot_state["current_category"],
-        "queue_length": len(state.bot_state["queue"]),
+        "elapsed": discord_bot.elapsed_seconds(),
+        "queue": [{"title": t.get("title") or t["url"], "url": t["url"]} for t in queue[:STATUS_QUEUE_PREVIEW]],
+        "queue_length": len(queue),
         "loop": state.bot_state["loop"],
-        "volume": state.bot_state["volume"],
+        "shuffle": state.bot_state["shuffle"],
         "guild_id": state.bot_state["guild_id"],
         "channel_id": state.bot_state["channel_id"],
+        "channel_name": vc.channel.name if connected else None,
     })
 
 
@@ -118,7 +126,7 @@ def join():
     channel_id = str(data.get("channel_id", ""))
     if not is_valid_snowflake(guild_id) or not is_valid_snowflake(channel_id):
         return jsonify({"ok": False, "message": "guild_id and channel_id required"}), 400
-    ok, msg = run_async(discord_bot.join_channel(guild_id, channel_id))
+    ok, msg = run_async(discord_bot.join_channel(guild_id, channel_id), timeout=discord_bot.JOIN_TIMEOUT)
     return jsonify({"ok": ok, "message": msg})
 
 
@@ -147,7 +155,7 @@ def play_track():
     tracks = state.get_category_tracks(category)
     if not 0 <= index < len(tracks):
         return jsonify({"ok": False, "message": "Track not found"}), 404
-    ok, msg = run_async(discord_bot.play_single_track(dict(tracks[index])))
+    ok, msg = run_async(discord_bot.play_single_track(dict(tracks[index]), category))
     return jsonify({"ok": ok, "message": msg})
 
 
@@ -175,23 +183,16 @@ def skip():
     return jsonify({"ok": ok})
 
 
-@app.route("/api/volume", methods=["POST"])
-def volume():
-    try:
-        vol = float(json_body().get("volume", 0.5))
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "message": "volume must be a number"}), 400
-    if math.isnan(vol):
-        return jsonify({"ok": False, "message": "volume must be a number"}), 400
-    vol = max(0.0, min(1.0, vol))
-    call_in_loop(discord_bot.set_volume, vol)
-    return jsonify({"ok": True, "volume": vol})
-
-
 @app.route("/api/loop", methods=["POST"])
 def loop():
     state.bot_state["loop"] = bool(json_body().get("loop", False))
     return jsonify({"ok": True, "loop": state.bot_state["loop"]})
+
+
+@app.route("/api/shuffle", methods=["POST"])
+def shuffle():
+    enabled = call_in_loop(discord_bot.set_shuffle, bool(json_body().get("shuffle", False)))
+    return jsonify({"ok": True, "shuffle": enabled})
 
 
 @app.route("/api/categories", methods=["GET"])
@@ -234,8 +235,24 @@ def add_track(category):
         return jsonify({"ok": False, "message": "url required"}), 400
     if not is_valid_track_url(url):
         return jsonify({"ok": False, "message": "Only YouTube links are allowed"}), 400
-    state.add_track(category, url, title)
-    return jsonify({"ok": True})
+
+    playlist = discord_bot.is_playlist_url(url)
+    if title and not playlist:
+        tracks = [{"url": url, "title": title}]
+    else:
+        try:
+            tracks = discord_bot.fetch_tracks(url)
+        except Exception as e:
+            print(f"Could not read {url} from YouTube: {e!r}")
+            if playlist:
+                return jsonify({"ok": False, "message": "Could not read this playlist from YouTube"}), 502
+            tracks = [{"url": url, "title": url}]
+        if not tracks:
+            return jsonify({"ok": False, "message": "No playable videos found"}), 400
+    for track in tracks:
+        track["title"] = track["title"][:MAX_TITLE_LENGTH]
+    state.add_tracks(category, tracks)
+    return jsonify({"ok": True, "added": len(tracks)})
 
 
 @app.route("/api/categories/<category>/tracks/<int:index>", methods=["DELETE"])

@@ -6,10 +6,13 @@ A Discord bot that plays music from YouTube in a voice channel. You control it f
 
 - Join and leave a chosen voice channel from the panel.
 - Music categories (`combat_music`, `ambient_music` and `storm_music` by default), plus your own categories that you can add and delete.
-- Add YouTube links to categories.
-- Play a whole category or a single track.
-- Pause, resume, skip and stop tracks, loop playback and adjust the volume.
-- See the track that is playing now and the queue length.
+- Add YouTube links to categories. Titles are read from YouTube automatically, and a playlist link adds all of its videos at once.
+- Play a whole category (optionally shuffled) or a single track.
+- Pause, resume, skip and stop tracks, and repeat the current track.
+- See what is playing now, its progress, and the next tracks in the queue.
+- The next track is prepared in the background, so there is barely any silence between tracks.
+- The bot leaves the voice channel automatically a minute after everyone else leaves.
+- The panel remembers your server, channel and category, and also works on a phone or tablet.
 
 ## Requirements
 
@@ -79,9 +82,9 @@ Then open `http://localhost:5000` (or the port you set in `FLASK_PORT`).
 
 1. Select a server and a voice channel, then click **Join**.
 2. Select a category or add a new one.
-3. Add YouTube links to the category. The title is optional.
-4. Click **▶ Play Category** to play the whole category, or **▶** next to a single track.
-5. Control playback with the Pause, Skip, Stop and Loop buttons and the volume slider.
+3. Add YouTube links to the category. Leave the title empty to use the one from YouTube. A playlist link (`youtube.com/playlist?list=…`) adds all its videos (up to 200).
+4. Click **▶ Play category** to play the whole category, or **▶** next to a single track. Turn on **🔀 Shuffle** to play the category in random order.
+5. Control playback with the Pause, Skip, Stop and Repeat buttons. Each listener can set the bot's volume in Discord (right-click the bot → User Volume).
 
 Playlists are saved to `playlists.json` in the project directory. The file is created automatically on first run and is not committed to the repository.
 
@@ -112,4 +115,5 @@ tests/                # tests (pytest)
 
 - **`DISCORD_TOKEN is not set`**: the `.env` file is missing or has no token in it.
 - **The bot's server isn't in the list**: make sure the bot is invited to the server and is online (the console should show `Bot logged in as ...`).
+- **The bot joins the channel but the panel says it timed out**: a firewall or VPN is probably blocking Discord voice servers (non-standard ports and UDP). Try another network or run the bot on a different machine.
 - **A track doesn't play**: YouTube changes often, so update yt-dlp with `uv lock --upgrade-package yt-dlp && uv sync`.

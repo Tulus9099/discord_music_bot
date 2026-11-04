@@ -38,12 +38,15 @@ def get_category_tracks(category):
         return data["categories"].get(category, [])
 
 def add_track(category, url, title=""):
+    add_tracks(category, [{"url": url, "title": title}])
+
+def add_tracks(category, tracks):
     with _lock:
         data = _load()
         if category not in data["categories"]:
             data["categories"][category] = []
-        track = {"url": url, "title": title or url}
-        data["categories"][category].append(track)
+        for track in tracks:
+            data["categories"][category].append({"url": track["url"], "title": track["title"] or track["url"]})
         _save(data)
 
 def remove_track(category, index):
@@ -83,7 +86,10 @@ bot_state = {
     "queue": [],
     "is_playing": False,
     "loop": False,
-    "volume": 0.5,
+    "shuffle": False,
+    "track_started_at": None,
+    "paused_at": None,
+    "paused_total": 0.0,
     "guild_id": None,
     "channel_id": None,
 }

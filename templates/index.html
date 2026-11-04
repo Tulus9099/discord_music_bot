@@ -4,23 +4,40 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Discord Music Controller</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>" />
 <style>
   :root {
-    --bg: #1a1a2e;
-    --panel: #16213e;
-    --card: #0f3460;
+    --bg: #12141f;
+    --panel: #181b2b;
+    --card: #1f2338;
+    --card-hover: #262b45;
     --accent: #e94560;
-    --accent2: #533483;
-    --text: #eaeaea;
-    --muted: #8892a4;
+    --accent2: #7b5cd6;
+    --text: #eceef5;
+    --muted: #8b92a8;
     --success: #4ecca3;
-    --border: #1e2d50;
+    --warning: #f0a04b;
+    --danger: #d9534f;
+    --border: #2b3150;
+    --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
-  h1 { font-size: 1.6rem; font-weight: 700; }
-  h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 10px; color: var(--success); }
-  h3 { font-size: 0.95rem; font-weight: 600; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  h1 { font-size: 1.35rem; font-weight: 700; }
+  h2 {
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  h3 { font-size: 0.9rem; font-weight: 600; }
 
   .header {
     background: var(--panel);
@@ -28,7 +45,8 @@
     padding: 14px 24px;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
+    flex-wrap: wrap;
   }
   .header .dot {
     width: 12px; height: 12px;
@@ -40,11 +58,9 @@
 
   .layout {
     display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 0;
+    grid-template-columns: 300px 1fr;
     height: calc(100vh - 57px);
   }
-
   .sidebar {
     background: var(--panel);
     border-right: 1px solid var(--border);
@@ -54,7 +70,6 @@
     flex-direction: column;
     gap: 16px;
   }
-
   .main {
     padding: 20px;
     overflow-y: auto;
@@ -62,10 +77,9 @@
     flex-direction: column;
     gap: 20px;
   }
-
   .card {
     background: var(--card);
-    border-radius: 10px;
+    border-radius: var(--radius);
     padding: 16px;
     border: 1px solid var(--border);
   }
@@ -75,115 +89,173 @@
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 8px 10px;
-    border-radius: 6px;
+    padding: 9px 10px;
+    border-radius: 8px;
     font-size: 0.9rem;
     outline: none;
     transition: border-color 0.2s;
   }
-  select:focus, input:focus { border-color: var(--accent); }
+  select:focus, input:focus { border-color: var(--accent2); }
 
   button {
     cursor: pointer;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 0.88rem;
     font-weight: 600;
-    padding: 8px 14px;
-    transition: opacity 0.2s, transform 0.1s;
+    padding: 9px 14px;
+    color: var(--text);
+    background: #2c3352;
+    transition: opacity 0.2s, transform 0.1s, background-color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    line-height: 1.2;
   }
-  button:hover { opacity: 0.85; }
+  button:hover { opacity: 0.88; }
   button:active { transform: scale(0.97); }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:focus-visible, .tab:focus-visible, .track-item:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
 
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-success { background: var(--success); color: #111; }
-  .btn-muted { background: #2a3a55; color: var(--text); }
-  .btn-danger { background: #c0392b; color: #fff; }
-  .btn-small { padding: 4px 10px; font-size: 0.8rem; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-ghost { background: transparent; color: var(--muted); }
+  .btn-ghost:hover { background: #2c3352; color: var(--text); }
+  .btn-small { padding: 5px 10px; font-size: 0.8rem; }
+  .btn-icon { padding: 5px 8px; min-width: 32px; }
+  .toggle.on { background: var(--accent2); color: #fff; }
+
+  /* Spinner shown while a button waits for the server. */
+  button.busy { pointer-events: none; opacity: 0.75; }
+  button.busy::after {
+    content: '';
+    width: 12px; height: 12px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .row { display: flex; gap: 8px; align-items: center; }
-  .row.wrap { flex-wrap: wrap; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .hint { font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
 
   .player-card {
-    background: linear-gradient(135deg, var(--card), var(--accent2));
-    border-radius: 12px;
-    padding: 20px;
+    background: linear-gradient(135deg, #1f2448 0%, #3a2a6b 100%);
+    border-radius: 14px;
+    padding: 22px;
     border: 1px solid var(--border);
   }
-  .now-playing { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
-  .track-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; min-height: 1.4em; }
-  .track-category { font-size: 0.82rem; color: var(--success); margin-bottom: 16px; }
+  .now-playing { font-size: 0.75rem; color: #b9b3d9; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1.5px; }
+  .current-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; min-height: 1.5em; overflow-wrap: anywhere; }
+  .current-category { font-size: 0.82rem; color: var(--success); min-height: 1.2em; }
 
-  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .controls button { min-width: 44px; }
-
-  .volume-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
-  .volume-row label { font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
-  input[type="range"] {
-    flex: 1;
-    accent-color: var(--accent);
-    cursor: pointer;
+  .progress { margin: 16px 0; }
+  .progress-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    overflow: hidden;
   }
-  .volume-val { font-size: 0.82rem; color: var(--muted); width: 36px; text-align: right; }
+  .progress-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--success), #6fe0c0);
+    border-radius: 3px;
+    transition: width 1s linear;
+  }
+  .progress-times {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #b9b3d9;
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+  }
 
-  .category-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .controls button { height: 38px; }
+  .controls .spacer { flex: 1; }
+
+  .up-next { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+  .up-next h3 { font-size: 0.75rem; color: #b9b3d9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .up-next ol { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .up-next li {
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #d8d4ee;
+  }
+  .up-next li span { color: #8f88b8; display: inline-block; width: 22px; }
+  .up-next .more { color: #8f88b8; font-size: 0.8rem; }
+
+  .category-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .tab {
     padding: 6px 14px;
     border-radius: 20px;
-    background: var(--border);
+    background: var(--panel);
     color: var(--muted);
     cursor: pointer;
     font-size: 0.85rem;
     font-weight: 600;
-    border: 1px solid transparent;
+    border: 1px solid var(--border);
     transition: background-color 0.2s, border-color 0.2s, color 0.2s;
-    display: flex; align-items: center; gap: 6px;
   }
-  .tab:hover { border-color: var(--accent); color: var(--text); }
-  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .tab .del-cat { font-size: 0.75rem; opacity: 0.7; }
-  .tab .del-cat:hover { opacity: 1; color: #fff; }
+  .tab:hover { border-color: var(--accent2); color: var(--text); }
+  .tab.active { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+
+  .playlist-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .playlist-head h2 { margin: 0; }
+  .playlist-head .spacer { flex: 1; }
 
   .track-list { display: flex; flex-direction: column; gap: 6px; }
   .track-item {
     background: var(--panel);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 9px 10px;
     display: flex;
     align-items: center;
     gap: 10px;
     border: 1px solid var(--border);
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, background-color 0.2s;
   }
-  .track-item:hover { border-color: var(--accent2); }
-  .track-item.active { border-color: var(--success); background: #0d2a24; }
-  .track-num { font-size: 0.8rem; color: var(--muted); width: 20px; text-align: center; }
+  .track-item:hover { border-color: #3b4270; background: var(--card-hover); }
+  .track-item.selectable { cursor: pointer; }
+  .track-item.active { border-color: var(--accent2); background: #2a2550; }
+  .track-item.playing { border-color: var(--success); background: #15322c; }
+  .track-num { font-size: 0.8rem; color: var(--muted); width: 22px; text-align: center; flex-shrink: 0; }
+  .track-item.playing .track-num { color: var(--success); }
   .track-info { flex: 1; min-width: 0; }
   .track-name { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .track-url { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .add-track-form { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-  .add-track-form .row { gap: 6px; }
+  .add-track-form { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 
   .status-bar {
+    margin-left: auto;
     font-size: 0.8rem;
     color: var(--muted);
     display: flex;
-    gap: 16px;
+    gap: 12px;
     align-items: center;
     flex-wrap: wrap;
   }
   .badge {
     background: var(--border);
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 0.78rem;
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
   }
   .badge.playing { background: var(--success); color: #111; }
-  .badge.paused { background: #e67e22; color: #111; }
+  .badge.paused { background: var(--warning); color: #111; }
 
-  .empty { text-align: center; color: var(--muted); padding: 24px; font-size: 0.9rem; }
+  .empty { text-align: center; color: var(--muted); padding: 28px 12px; font-size: 0.9rem; line-height: 1.5; }
+  .empty .icon { font-size: 1.8rem; display: block; margin-bottom: 6px; }
 
   .toast {
     position: fixed;
@@ -196,17 +268,30 @@
     font-size: 0.88rem;
     z-index: 999;
     transition: opacity 0.4s;
-    max-width: 300px;
+    max-width: min(340px, calc(100vw - 32px));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   }
   .toast.ok { border-color: var(--success); color: var(--success); }
   .toast.err { border-color: var(--accent); color: var(--accent); }
   .toast.hidden { opacity: 0; pointer-events: none; }
 
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; height: auto; }
+    .sidebar { border-right: none; border-top: 1px solid var(--border); }
+    /* The player is used most during a session, so it goes first on small screens. */
+    .main { order: -1; }
+    .main { padding: 16px; }
+    .header { padding: 12px 16px; }
+    .status-bar { margin-left: 0; width: 100%; }
+    .toast { right: 16px; bottom: 16px; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .header .dot,
     select, input[type="text"], input[type="url"],
-    button, .tab, .track-item, .toast { transition: none; }
+    button, .tab, .track-item, .toast, .progress-fill { transition: none; }
     button:active { transform: none; }
+    button.busy::after { animation: none; border-right-color: currentColor; }
   }
 
   ::-webkit-scrollbar { width: 6px; }
@@ -219,89 +304,101 @@
 <div class="header">
   <div class="dot" id="statusDot"></div>
   <h1>🎵 Discord Music Controller</h1>
-  <div style="margin-left:auto" class="status-bar">
+  <div class="status-bar">
+    <span id="channelInfo"></span>
     <span id="statusBadge" class="badge">Disconnected</span>
-    <span id="queueInfo" style="display:none">Queue: <span id="queueLen">0</span></span>
   </div>
 </div>
 
 <div class="layout">
   <div class="sidebar">
     <div class="card">
-      <h2>Connect Bot</h2>
-      <div style="display:flex;flex-direction:column;gap:8px">
+      <h2>Voice channel</h2>
+      <div class="stack">
         <select id="guildSelect" aria-label="Discord server">
-          <option value="">Select Server...</option>
+          <option value="">Select server…</option>
         </select>
         <select id="channelSelect" aria-label="Voice channel">
-          <option value="">Select Voice Channel...</option>
+          <option value="">Select voice channel…</option>
         </select>
         <div class="row">
           <button class="btn-success" style="flex:1" data-action="join">Join</button>
           <button class="btn-danger" style="flex:1" data-action="leave">Leave</button>
         </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Add Category</h2>
-      <div class="row">
-        <input type="text" id="newCatInput" placeholder="e.g. tavern_music" aria-label="New category name" />
-        <button class="btn-primary btn-small" data-action="add-category" aria-label="Add category">+</button>
+        <p class="hint">The bot leaves automatically a minute after everyone leaves the channel.</p>
       </div>
     </div>
 
     <div class="card" style="flex:1">
       <h2>Categories</h2>
+      <div class="row" style="margin-bottom:12px">
+        <input type="text" id="newCatInput" placeholder="New category, e.g. tavern" aria-label="New category name" />
+        <button class="btn-primary btn-icon" data-action="add-category" aria-label="Add category">+</button>
+      </div>
       <div id="categoryList" class="track-list"></div>
     </div>
   </div>
 
   <div class="main">
     <div class="player-card">
-      <div class="now-playing">Now Playing</div>
-      <div class="track-title" id="currentTitle">—</div>
-      <div class="track-category" id="currentCategory"></div>
-      <div class="controls">
-        <button class="btn-success" data-action="play-category" id="btnPlayCat" title="Play current category">▶ Play Category</button>
-        <button class="btn-muted" data-action="pause" id="btnPause">⏸ Pause</button>
-        <button class="btn-success" data-action="resume" id="btnResume" style="display:none">▶ Resume</button>
-        <button class="btn-muted" data-action="skip" title="Skip">⏭ Skip</button>
-        <button class="btn-danger" data-action="stop">⏹ Stop</button>
-        <button class="btn-muted" id="btnLoop" data-action="toggle-loop">🔁 Loop: Off</button>
+      <div class="now-playing">Now playing</div>
+      <div class="current-title" id="currentTitle">Nothing is playing</div>
+      <div class="current-category" id="currentCategory"></div>
+
+      <div class="progress">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-times"><span id="elapsedTime">0:00</span><span id="durationTime">0:00</span></div>
       </div>
-      <div class="volume-row">
-        <label for="volumeSlider">Volume</label>
-        <input type="range" min="0" max="100" value="50" id="volumeSlider" />
-        <span class="volume-val" id="volumeVal">50%</span>
+
+      <div class="controls">
+        <button class="btn-success" data-action="play-category" title="Play the selected category">▶ Play category</button>
+        <button data-action="pause" id="btnPause">⏸ Pause</button>
+        <button class="btn-success" data-action="resume" id="btnResume" style="display:none">▶ Resume</button>
+        <button data-action="skip" title="Skip to the next track">⏭ Skip</button>
+        <button class="btn-danger" data-action="stop">⏹ Stop</button>
+        <span class="spacer"></span>
+        <button class="toggle" id="btnShuffle" data-action="toggle-shuffle" aria-pressed="false" title="Play tracks in random order">🔀 Shuffle</button>
+        <button class="toggle" id="btnLoop" data-action="toggle-loop" aria-pressed="false" title="Repeat the current track">🔁 Repeat</button>
+      </div>
+
+      <div class="up-next" id="upNext" hidden>
+        <h3>Up next</h3>
+        <ol id="upNextList"></ol>
       </div>
     </div>
 
     <div class="card">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <h2 style="margin:0">Playlist</h2>
-        <span id="activeCatLabel" style="font-size:0.82rem;color:var(--muted)">Select a category</span>
+      <div class="playlist-head">
+        <h2>Playlist</h2>
+        <span id="activeCatLabel" class="hint">Select a category</span>
       </div>
       <div class="category-tabs" id="categoryTabs"></div>
-      <div id="trackList" class="track-list">
-        <div class="empty">Select a category to see tracks</div>
-      </div>
-      <div class="add-track-form" id="addTrackForm" style="display:none">
-        <h3>Add YouTube Track</h3>
-        <input type="url" id="trackUrl" placeholder="https://www.youtube.com/watch?v=..." aria-label="YouTube URL" />
+      <div id="trackList" class="track-list"></div>
+      <div class="add-track-form stack" id="addTrackForm" hidden>
+        <h3>Add from YouTube</h3>
+        <input type="url" id="trackUrl" placeholder="Video or playlist link" aria-label="YouTube video or playlist URL" />
         <input type="text" id="trackTitle" placeholder="Title (optional)" aria-label="Track title (optional)" />
-        <button class="btn-primary btn-small" data-action="add-track">Add Track</button>
+        <div class="row">
+          <button class="btn-primary" data-action="add-track">Add</button>
+          <p class="hint">Leave the title empty to use the one from YouTube. A playlist link (youtube.com/playlist?list=…) adds all its videos.</p>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="toast hidden" id="toast"></div>
+<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
+  const STATUS_INTERVAL = 3000;
+  const UP_NEXT_LIMIT = 5;
+
   let selectedCategory = null;
   let categories = {};
-  let loopEnabled = false;
+  let status = {};
+  let statusReceivedAt = 0;
+
+  const $ = id => document.getElementById(id);
 
   function esc(value) {
     return String(value)
@@ -316,12 +413,34 @@
     return name.replaceAll('_', ' ');
   }
 
+  function formatTime(seconds) {
+    if (seconds == null || !Number.isFinite(seconds)) return '0:00';
+    const total = Math.max(0, Math.floor(seconds));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = String(total % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+  }
+
+  // Remembers the last server, channel and category; storage can be unavailable (private mode).
+  const memory = {
+    get(key) {
+      try { return localStorage.getItem('dmc.' + key); } catch (e) { console.debug('storage unavailable', e); return null; }
+    },
+    set(key, value) {
+      try {
+        if (value) localStorage.setItem('dmc.' + key, value);
+        else localStorage.removeItem('dmc.' + key);
+      } catch (e) { console.debug('storage unavailable', e); }
+    },
+  };
+
   function showToast(msg, ok = true) {
-    const t = document.getElementById('toast');
+    const t = $('toast');
     t.textContent = msg;
     t.className = 'toast ' + (ok ? 'ok' : 'err');
     clearTimeout(t._timer);
-    t._timer = setTimeout(() => t.classList.add('hidden'), 3000);
+    t._timer = setTimeout(() => t.classList.add('hidden'), 3500);
   }
 
   async function api(method, path, body) {
@@ -341,245 +460,292 @@
     }
   }
 
+  // ---------- Voice channel ----------
+
   async function loadGuilds() {
     const guilds = await api('GET', '/guilds');
     if (!guilds) return;
-    const sel = document.getElementById('guildSelect');
-    guilds.forEach(g => {
-      const o = document.createElement('option');
-      o.value = g.id;
-      o.textContent = g.name;
-      sel.appendChild(o);
-    });
+    const sel = $('guildSelect');
+    guilds.forEach(g => sel.add(new Option(g.name, g.id)));
   }
 
   async function loadChannels() {
-    const guildId = document.getElementById('guildSelect').value;
-    const sel = document.getElementById('channelSelect');
-    sel.innerHTML = '<option value="">Select Voice Channel...</option>';
+    const guildId = $('guildSelect').value;
+    const sel = $('channelSelect');
+    sel.length = 1;
     if (!guildId) return;
     const channels = await api('GET', '/guilds/' + encodeURIComponent(guildId) + '/channels');
-    if (!channels) return;
-    channels.forEach(c => {
-      const o = document.createElement('option');
-      o.value = c.id;
-      o.textContent = '🔊 ' + c.name;
-      sel.appendChild(o);
-    });
+    channels?.forEach(c => sel.add(new Option('🔊 ' + c.name, c.id)));
+  }
+
+  async function selectServerAndChannel(guildId, channelId) {
+    const guildSel = $('guildSelect');
+    if (!guildId || ![...guildSel.options].some(o => o.value === guildId)) return;
+    guildSel.value = guildId;
+    await loadChannels();
+    if (channelId && [...$('channelSelect').options].some(o => o.value === channelId)) {
+      $('channelSelect').value = channelId;
+    }
   }
 
   async function joinChannel() {
-    const guildId = document.getElementById('guildSelect').value;
-    const channelId = document.getElementById('channelSelect').value;
-    if (!guildId || !channelId) { showToast('Select server and channel', false); return; }
+    const guildId = $('guildSelect').value;
+    const channelId = $('channelSelect').value;
+    if (!guildId || !channelId) { showToast('Select a server and a voice channel', false); return; }
     const r = await api('POST', '/join', {guild_id: guildId, channel_id: channelId});
-    if (r) showToast(r.message, r.ok);
+    if (!r) return;
+    showToast(r.message, r.ok);
+    if (r.ok) {
+      memory.set('guild', guildId);
+      memory.set('channel', channelId);
+      await updateStatus();
+    }
   }
 
   async function leaveChannel() {
     const r = await api('POST', '/leave');
-    if (r) showToast(r.ok ? 'Left channel' : 'Not connected', r.ok);
+    if (r) showToast(r.ok ? 'Left the channel' : 'Not connected', r.ok);
+    await updateStatus();
   }
 
+  // ---------- Categories and tracks ----------
+
   async function loadCategories() {
-    categories = await api('GET', '/categories');
-    if (!categories) return;
+    const data = await api('GET', '/categories');
+    if (!data) return;
+    categories = data;
+    if (selectedCategory && !categories[selectedCategory]) selectedCategory = null;
     renderCategoryList();
     renderCategoryTabs();
-    if (selectedCategory && categories[selectedCategory]) {
-      renderTracks(selectedCategory);
-    } else if (selectedCategory && !categories[selectedCategory]) {
-      selectedCategory = null;
-      document.getElementById('trackList').innerHTML = '<div class="empty">Select a category to see tracks</div>';
-      document.getElementById('addTrackForm').style.display = 'none';
-    }
+    renderTracks();
   }
 
   function renderCategoryList() {
-    const el = document.getElementById('categoryList');
+    const el = $('categoryList');
     const keys = Object.keys(categories);
-    if (!keys.length) { el.innerHTML = '<div class="empty">No categories</div>'; return; }
-    el.innerHTML = keys.map(k => `
-      <div class="track-item ${k === selectedCategory ? 'active' : ''}" data-action="select" data-cat="${esc(k)}">
-        <div class="track-info">
-          <div class="track-name">${esc(label(k))}</div>
-          <div class="track-url">${categories[k].length} track(s)</div>
-        </div>
-        <button class="btn-danger btn-small" data-action="delete-category" data-cat="${esc(k)}">🗑</button>
-      </div>
-    `).join('');
+    if (!keys.length) {
+      el.innerHTML = '<div class="empty"><span class="icon">📂</span>No categories yet</div>';
+      return;
+    }
+    el.innerHTML = keys.map(k => {
+      const count = categories[k].length;
+      const classes = ['track-item', 'selectable'];
+      if (k === selectedCategory) classes.push('active');
+      if (k === status.current_category && status.current_track) classes.push('playing');
+      return `
+        <div class="${classes.join(' ')}" data-action="select" data-cat="${esc(k)}" tabindex="0" role="button">
+          <div class="track-info">
+            <div class="track-name">${esc(label(k))}</div>
+            <div class="track-url">${count} track${count === 1 ? '' : 's'}</div>
+          </div>
+          <button class="btn-ghost btn-icon" data-action="delete-category" data-cat="${esc(k)}" aria-label="Delete category ${esc(label(k))}">🗑</button>
+        </div>`;
+    }).join('');
   }
 
   function renderCategoryTabs() {
-    const el = document.getElementById('categoryTabs');
-    const keys = Object.keys(categories);
-    el.innerHTML = keys.map(k => `
-      <div class="tab ${k === selectedCategory ? 'active' : ''}" data-action="select" data-cat="${esc(k)}">
-        ${esc(label(k))}
-      </div>
+    $('categoryTabs').innerHTML = Object.keys(categories).map(k => `
+      <button class="tab ${k === selectedCategory ? 'active' : ''}" data-action="select" data-cat="${esc(k)}">${esc(label(k))}</button>
     `).join('');
+  }
+
+  function isPlayingTrack(cat, track) {
+    return cat === status.current_category && status.current_track?.url === track.url;
+  }
+
+  function renderTracks() {
+    const el = $('trackList');
+    $('addTrackForm').hidden = !selectedCategory;
+    $('activeCatLabel').textContent = selectedCategory ? label(selectedCategory) : 'Select a category';
+    if (!selectedCategory) {
+      el.innerHTML = '<div class="empty"><span class="icon">🎼</span>Select a category to see its tracks</div>';
+      return;
+    }
+    const tracks = categories[selectedCategory] || [];
+    if (!tracks.length) {
+      el.innerHTML = '<div class="empty"><span class="icon">🔗</span>No tracks yet. Paste a YouTube link below.</div>';
+      return;
+    }
+    const cat = esc(selectedCategory);
+    el.innerHTML = tracks.map((t, i) => {
+      const playing = isPlayingTrack(selectedCategory, t);
+      return `
+        <div class="track-item ${playing ? 'playing' : ''}">
+          <div class="track-num">${playing ? '♪' : i + 1}</div>
+          <div class="track-info">
+            <div class="track-name">${esc(t.title || t.url)}</div>
+            <div class="track-url">${esc(t.url)}</div>
+          </div>
+          <button class="btn-success btn-icon" data-action="play-track" data-cat="${cat}" data-index="${i}" aria-label="Play">▶</button>
+          <button class="btn-ghost btn-icon" data-action="remove-track" data-cat="${cat}" data-index="${i}" aria-label="Remove">🗑</button>
+        </div>`;
+    }).join('');
   }
 
   function selectCategory(cat) {
     selectedCategory = cat;
-    document.getElementById('activeCatLabel').textContent = label(cat);
+    memory.set('category', cat);
     renderCategoryList();
     renderCategoryTabs();
-    renderTracks(cat);
-    document.getElementById('addTrackForm').style.display = 'flex';
-    document.getElementById('addTrackForm').style.flexDirection = 'column';
-  }
-
-  function renderTracks(cat) {
-    const tracks = categories[cat] || [];
-    const el = document.getElementById('trackList');
-    if (!tracks.length) {
-      el.innerHTML = '<div class="empty">No tracks yet. Add a YouTube link below.</div>';
-      return;
-    }
-    el.innerHTML = tracks.map((t, i) => `
-      <div class="track-item" id="track_${i}">
-        <div class="track-num">${i+1}</div>
-        <div class="track-info">
-          <div class="track-name">${esc(t.title || t.url)}</div>
-          <div class="track-url">${esc(t.url)}</div>
-        </div>
-        <button class="btn-success btn-small" data-action="play-track" data-cat="${esc(cat)}" data-index="${i}">▶</button>
-        <button class="btn-danger btn-small" data-action="remove-track" data-cat="${esc(cat)}" data-index="${i}">🗑</button>
-      </div>
-    `).join('');
+    renderTracks();
   }
 
   async function addCategory() {
-    const input = document.getElementById('newCatInput');
+    const input = $('newCatInput');
     const name = input.value.trim();
-    if (!name) return;
+    if (!name) { input.focus(); return; }
     const r = await api('POST', '/categories', {name});
-    if (r?.ok) { input.value = ''; showToast('Category added'); await loadCategories(); }
-    else if (r) showToast(r.message, false);
+    if (r?.ok) {
+      input.value = '';
+      showToast('Category added');
+      await loadCategories();
+    } else if (r) {
+      showToast(r.message, false);
+    }
   }
 
   async function deleteCategory(name) {
-    if (!confirm(`Delete category "${name}"?`)) return;
+    const count = categories[name]?.length ?? 0;
+    if (!confirm(`Delete category "${label(name)}" with ${count} track(s)?`)) return;
     const r = await api('DELETE', '/categories/' + encodeURIComponent(name));
     if (r?.ok) {
-      showToast('Deleted');
+      showToast('Category deleted');
       if (selectedCategory === name) {
         selectedCategory = null;
+        memory.set('category', null);
       }
       await loadCategories();
     }
   }
 
   async function addTrack() {
-    const url = document.getElementById('trackUrl').value.trim();
-    const title = document.getElementById('trackTitle').value.trim();
-    if (!url || !selectedCategory) { showToast('Enter a URL', false); return; }
+    const urlInput = $('trackUrl');
+    const url = urlInput.value.trim();
+    const title = $('trackTitle').value.trim();
+    if (!selectedCategory) return;
+    if (!url) { showToast('Paste a YouTube link first', false); urlInput.focus(); return; }
     const r = await api('POST', '/categories/' + encodeURIComponent(selectedCategory) + '/tracks', {url, title});
     if (r?.ok) {
-      document.getElementById('trackUrl').value = '';
-      document.getElementById('trackTitle').value = '';
-      showToast('Track added');
+      urlInput.value = '';
+      $('trackTitle').value = '';
+      showToast(r.added === 1 ? 'Track added' : `${r.added} tracks added`);
       await loadCategories();
-    } else if (r) showToast(r.message, false);
+    } else if (r) {
+      showToast(r.message, false);
+    }
   }
 
   async function removeTrack(cat, index) {
     const r = await api('DELETE', '/categories/' + encodeURIComponent(cat) + '/tracks/' + index);
-    if (r?.ok) { showToast('Removed'); await loadCategories(); }
+    if (r?.ok) { showToast('Track removed'); await loadCategories(); }
   }
+
+  // ---------- Playback ----------
 
   async function playTrack(cat, index) {
     const track = categories[cat][index];
     const r = await api('POST', '/play/track', {category: cat, index});
     if (r) showToast(r.ok ? 'Playing: ' + (track.title || track.url) : r.message, r.ok);
+    await updateStatus();
   }
 
   async function playCategory() {
     if (!selectedCategory) { showToast('Select a category first', false); return; }
     const r = await api('POST', '/play/category', {category: selectedCategory});
-    if (r) showToast(r.ok ? 'Playing ' + selectedCategory : r.message, r.ok);
+    if (r) showToast(r.ok ? 'Playing ' + label(selectedCategory) : r.message, r.ok);
+    await updateStatus();
   }
 
-  async function stopMusic() {
-    await api('POST', '/stop');
-    showToast('Stopped');
-  }
-
-  async function pauseMusic() {
-    const r = await api('POST', '/pause');
-    if (r?.ok) {
-      document.getElementById('btnPause').style.display = 'none';
-      document.getElementById('btnResume').style.display = '';
-    }
-  }
-
-  async function resumeMusic() {
-    const r = await api('POST', '/resume');
-    if (r?.ok) {
-      document.getElementById('btnResume').style.display = 'none';
-      document.getElementById('btnPause').style.display = '';
-    }
-  }
-
-  async function skipTrack() {
-    await api('POST', '/skip');
-    showToast('Skipped');
-  }
-
-  async function setVolume(val) {
-    document.getElementById('volumeVal').textContent = val + '%';
-    await api('POST', '/volume', {volume: val / 100});
+  async function simpleCommand(path, message) {
+    const r = await api('POST', path);
+    if (r?.ok && message) showToast(message);
+    await updateStatus();
   }
 
   async function toggleLoop() {
-    const r = await api('POST', '/loop', {loop: !loopEnabled});
-    if (!r) return;
-    loopEnabled = r.loop;
-    document.getElementById('btnLoop').textContent = '🔁 Loop: ' + (loopEnabled ? 'On' : 'Off');
-    document.getElementById('btnLoop').style.background = loopEnabled ? 'var(--accent2)' : '';
+    const r = await api('POST', '/loop', {loop: !status.loop});
+    if (r) showToast(r.loop ? 'Repeat is on' : 'Repeat is off');
+    await updateStatus();
+  }
+
+  async function toggleShuffle() {
+    const r = await api('POST', '/shuffle', {shuffle: !status.shuffle});
+    if (r) showToast(r.shuffle ? 'Shuffle is on' : 'Shuffle is off');
+    await updateStatus();
+  }
+
+  // ---------- Status ----------
+
+  function setToggle(id, on) {
+    const btn = $(id);
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', String(on));
+  }
+
+  function renderProgress() {
+    const duration = status.current_track?.duration;
+    let elapsed = status.elapsed;
+    if (elapsed != null && status.is_playing) elapsed += (Date.now() - statusReceivedAt) / 1000;
+    if (duration) elapsed = Math.min(elapsed ?? 0, duration);
+    $('elapsedTime').textContent = formatTime(elapsed);
+    $('durationTime').textContent = duration ? formatTime(duration) : '0:00';
+    $('progressFill').style.width = duration ? `${(elapsed / duration) * 100}%` : '0%';
+  }
+
+  function renderUpNext() {
+    const queue = status.queue ?? [];
+    $('upNext').hidden = queue.length === 0;
+    const items = queue.slice(0, UP_NEXT_LIMIT).map((t, i) => `<li><span>${i + 1}.</span>${esc(t.title)}</li>`);
+    const more = status.queue_length - UP_NEXT_LIMIT;
+    if (more > 0) items.push(`<li class="more">+ ${more} more</li>`);
+    $('upNextList').innerHTML = items.join('');
+  }
+
+  function renderStatus(previous) {
+    const s = status;
+    $('statusDot').className = 'dot ' + (s.connected ? 'connected' : '');
+    $('channelInfo').textContent = s.channel_name ? '🔊 ' + s.channel_name : '';
+
+    const badge = $('statusBadge');
+    if (s.is_playing) {
+      badge.textContent = 'Playing';
+      badge.className = 'badge playing';
+    } else if (s.is_paused) {
+      badge.textContent = 'Paused';
+      badge.className = 'badge paused';
+    } else {
+      badge.textContent = s.connected ? 'Connected' : 'Disconnected';
+      badge.className = 'badge';
+    }
+    $('btnPause').style.display = s.is_paused ? 'none' : '';
+    $('btnResume').style.display = s.is_paused ? '' : 'none';
+
+    $('currentTitle').textContent = s.current_track ? (s.current_track.title || s.current_track.url) : 'Nothing is playing';
+    $('currentCategory').textContent = s.current_category && s.current_track ? '📁 ' + label(s.current_category) : '';
+
+    setToggle('btnLoop', s.loop);
+    setToggle('btnShuffle', s.shuffle);
+    renderUpNext();
+    renderProgress();
+
+    // Re-render lists only when the playing track changed, so hover and focus are not lost every poll.
+    const playingKey = st => `${st?.current_category}|${st?.current_track?.url}`;
+    if (playingKey(previous) !== playingKey(s)) {
+      renderCategoryList();
+      renderTracks();
+    }
   }
 
   async function updateStatus() {
     const s = await api('GET', '/status');
     if (!s) return;
-
-    const dot = document.getElementById('statusDot');
-    const badge = document.getElementById('statusBadge');
-
-    dot.className = 'dot ' + (s.connected ? 'connected' : '');
-
-    if (s.is_playing) {
-      badge.textContent = 'Playing';
-      badge.className = 'badge playing';
-      document.getElementById('btnPause').style.display = '';
-      document.getElementById('btnResume').style.display = 'none';
-    } else if (s.is_paused) {
-      badge.textContent = 'Paused';
-      badge.className = 'badge paused';
-      document.getElementById('btnPause').style.display = 'none';
-      document.getElementById('btnResume').style.display = '';
-    } else {
-      badge.textContent = s.connected ? 'Connected' : 'Disconnected';
-      badge.className = 'badge';
-    }
-
-    if (s.current_track) {
-      document.getElementById('currentTitle').textContent = s.current_track.title || s.current_track.url;
-    } else {
-      document.getElementById('currentTitle').textContent = '—';
-    }
-
-    document.getElementById('currentCategory').textContent = s.current_category ? '📁 ' + label(s.current_category) : '';
-
-    const qi = document.getElementById('queueInfo');
-    qi.style.display = s.queue_length > 0 ? '' : 'none';
-    document.getElementById('queueLen').textContent = s.queue_length;
-
-    loopEnabled = s.loop;
-    document.getElementById('btnLoop').textContent = '🔁 Loop: ' + (s.loop ? 'On' : 'Off');
-    document.getElementById('btnLoop').style.background = s.loop ? 'var(--accent2)' : '';
+    const previous = status;
+    status = s;
+    statusReceivedAt = Date.now();
+    renderStatus(previous);
   }
+
+  // ---------- Events ----------
 
   const actions = {
     'join': () => joinChannel(),
@@ -587,32 +753,56 @@
     'add-category': () => addCategory(),
     'add-track': () => addTrack(),
     'play-category': () => playCategory(),
-    'pause': () => pauseMusic(),
-    'resume': () => resumeMusic(),
-    'skip': () => skipTrack(),
-    'stop': () => stopMusic(),
+    'pause': () => simpleCommand('/pause'),
+    'resume': () => simpleCommand('/resume'),
+    'skip': () => simpleCommand('/skip', 'Skipped'),
+    'stop': () => simpleCommand('/stop', 'Stopped'),
     'toggle-loop': () => toggleLoop(),
+    'toggle-shuffle': () => toggleShuffle(),
     'select': el => selectCategory(el.dataset.cat),
     'delete-category': el => deleteCategory(el.dataset.cat),
     'play-track': el => playTrack(el.dataset.cat, Number(el.dataset.index)),
     'remove-track': el => removeTrack(el.dataset.cat, Number(el.dataset.index)),
   };
 
+  async function runAction(el) {
+    const result = actions[el.dataset.action]?.(el);
+    if (!(result instanceof Promise) || el.tagName !== 'BUTTON') return;
+    el.classList.add('busy');
+    el.setAttribute('aria-busy', 'true');
+    try {
+      await result;
+    } finally {
+      el.classList.remove('busy');
+      el.removeAttribute('aria-busy');
+    }
+  }
+
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
     e.stopPropagation();
-    actions[el.dataset.action]?.(el);
+    runAction(el);
   });
 
-  document.getElementById('guildSelect').addEventListener('change', loadChannels);
-  document.getElementById('volumeSlider').addEventListener('input', e => setVolume(e.target.value));
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    if (e.target.matches('[role="button"][data-action]')) runAction(e.target);
+    else if (e.target.id === 'newCatInput') addCategory();
+    else if (e.target.id === 'trackUrl' || e.target.id === 'trackTitle') runAction(document.querySelector('[data-action="add-track"]'));
+  });
+
+  $('guildSelect').addEventListener('change', loadChannels);
 
   async function init() {
     await loadGuilds();
-    await loadCategories();
     await updateStatus();
-    setInterval(updateStatus, 3000);
+    if (status.connected) await selectServerAndChannel(status.guild_id, status.channel_id);
+    else await selectServerAndChannel(memory.get('guild'), memory.get('channel'));
+    selectedCategory = memory.get('category');
+    await loadCategories();
+    setInterval(updateStatus, STATUS_INTERVAL);
+    setInterval(renderProgress, 1000);
   }
 
   await init();
