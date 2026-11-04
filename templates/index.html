@@ -34,7 +34,7 @@
     width: 12px; height: 12px;
     border-radius: 50%;
     background: #555;
-    transition: background 0.3s;
+    transition: background-color 0.3s;
   }
   .header .dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
 
@@ -137,7 +137,7 @@
     font-size: 0.85rem;
     font-weight: 600;
     border: 1px solid transparent;
-    transition: all 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
     display: flex; align-items: center; gap: 6px;
   }
   .tab:hover { border-color: var(--accent); color: var(--text); }
@@ -202,6 +202,13 @@
   .toast.err { border-color: var(--accent); color: var(--accent); }
   .toast.hidden { opacity: 0; pointer-events: none; }
 
+  @media (prefers-reduced-motion: reduce) {
+    .header .dot,
+    select, input[type="text"], input[type="url"],
+    button, .tab, .track-item, .toast { transition: none; }
+    button:active { transform: none; }
+  }
+
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -223,15 +230,15 @@
     <div class="card">
       <h2>Connect Bot</h2>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <select id="guildSelect" onchange="loadChannels()">
+        <select id="guildSelect" aria-label="Discord server">
           <option value="">Select Server...</option>
         </select>
-        <select id="channelSelect">
+        <select id="channelSelect" aria-label="Voice channel">
           <option value="">Select Voice Channel...</option>
         </select>
         <div class="row">
-          <button class="btn-success" style="flex:1" onclick="joinChannel()">Join</button>
-          <button class="btn-danger" style="flex:1" onclick="leaveChannel()">Leave</button>
+          <button class="btn-success" style="flex:1" data-action="join">Join</button>
+          <button class="btn-danger" style="flex:1" data-action="leave">Leave</button>
         </div>
       </div>
     </div>
@@ -239,8 +246,8 @@
     <div class="card">
       <h2>Add Category</h2>
       <div class="row">
-        <input type="text" id="newCatInput" placeholder="e.g. tavern_music" />
-        <button class="btn-primary btn-small" onclick="addCategory()">+</button>
+        <input type="text" id="newCatInput" placeholder="e.g. tavern_music" aria-label="New category name" />
+        <button class="btn-primary btn-small" data-action="add-category" aria-label="Add category">+</button>
       </div>
     </div>
 
@@ -256,16 +263,16 @@
       <div class="track-title" id="currentTitle">—</div>
       <div class="track-category" id="currentCategory"></div>
       <div class="controls">
-        <button class="btn-success" onclick="playCategory()" id="btnPlayCat" title="Play current category">▶ Play Category</button>
-        <button class="btn-muted" onclick="pauseMusic()" id="btnPause">⏸ Pause</button>
-        <button class="btn-success" onclick="resumeMusic()" id="btnResume" style="display:none">▶ Resume</button>
-        <button class="btn-muted" onclick="skipTrack()" title="Skip">⏭ Skip</button>
-        <button class="btn-danger" onclick="stopMusic()">⏹ Stop</button>
-        <button class="btn-muted" id="btnLoop" onclick="toggleLoop()">🔁 Loop: Off</button>
+        <button class="btn-success" data-action="play-category" id="btnPlayCat" title="Play current category">▶ Play Category</button>
+        <button class="btn-muted" data-action="pause" id="btnPause">⏸ Pause</button>
+        <button class="btn-success" data-action="resume" id="btnResume" style="display:none">▶ Resume</button>
+        <button class="btn-muted" data-action="skip" title="Skip">⏭ Skip</button>
+        <button class="btn-danger" data-action="stop">⏹ Stop</button>
+        <button class="btn-muted" id="btnLoop" data-action="toggle-loop">🔁 Loop: Off</button>
       </div>
       <div class="volume-row">
-        <label>Volume</label>
-        <input type="range" min="0" max="100" value="50" id="volumeSlider" oninput="setVolume(this.value)" />
+        <label for="volumeSlider">Volume</label>
+        <input type="range" min="0" max="100" value="50" id="volumeSlider" />
         <span class="volume-val" id="volumeVal">50%</span>
       </div>
     </div>
@@ -281,9 +288,9 @@
       </div>
       <div class="add-track-form" id="addTrackForm" style="display:none">
         <h3>Add YouTube Track</h3>
-        <input type="url" id="trackUrl" placeholder="https://www.youtube.com/watch?v=..." />
-        <input type="text" id="trackTitle" placeholder="Title (optional)" />
-        <button class="btn-primary btn-small" onclick="addTrack()">Add Track</button>
+        <input type="url" id="trackUrl" placeholder="https://www.youtube.com/watch?v=..." aria-label="YouTube URL" />
+        <input type="text" id="trackTitle" placeholder="Title (optional)" aria-label="Track title (optional)" />
+        <button class="btn-primary btn-small" data-action="add-track">Add Track</button>
       </div>
     </div>
   </div>
@@ -291,11 +298,23 @@
 
 <div class="toast hidden" id="toast"></div>
 
-<script>
+<script type="module">
   let selectedCategory = null;
   let categories = {};
   let loopEnabled = false;
-  let statusInterval = null;
+
+  function esc(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function label(name) {
+    return name.replaceAll('_', ' ');
+  }
 
   function showToast(msg, ok = true) {
     const t = document.getElementById('toast');
@@ -306,14 +325,17 @@
   }
 
   async function api(method, path, body) {
+    const options = {method};
+    if (method !== 'GET') {
+      // The server requires JSON on every state-changing request (CSRF protection).
+      options.headers = {'Content-Type': 'application/json'};
+      options.body = JSON.stringify(body ?? {});
+    }
     try {
-      const res = await fetch('/api' + path, {
-        method,
-        headers: body ? {'Content-Type': 'application/json'} : {},
-        body: body ? JSON.stringify(body) : undefined
-      });
+      const res = await fetch('/api' + path, options);
       return await res.json();
-    } catch(e) {
+    } catch (e) {
+      console.error(`API ${method} ${path} failed`, e);
       showToast('Network error', false);
       return null;
     }
@@ -336,7 +358,7 @@
     const sel = document.getElementById('channelSelect');
     sel.innerHTML = '<option value="">Select Voice Channel...</option>';
     if (!guildId) return;
-    const channels = await api('GET', '/guilds/' + guildId + '/channels');
+    const channels = await api('GET', '/guilds/' + encodeURIComponent(guildId) + '/channels');
     if (!channels) return;
     channels.forEach(c => {
       const o = document.createElement('option');
@@ -378,12 +400,12 @@
     const keys = Object.keys(categories);
     if (!keys.length) { el.innerHTML = '<div class="empty">No categories</div>'; return; }
     el.innerHTML = keys.map(k => `
-      <div class="track-item ${k === selectedCategory ? 'active' : ''}" onclick="selectCategory('${k}')">
+      <div class="track-item ${k === selectedCategory ? 'active' : ''}" data-action="select" data-cat="${esc(k)}">
         <div class="track-info">
-          <div class="track-name">${k.replace(/_/g,' ')}</div>
+          <div class="track-name">${esc(label(k))}</div>
           <div class="track-url">${categories[k].length} track(s)</div>
         </div>
-        <button class="btn-danger btn-small" onclick="event.stopPropagation();deleteCategory('${k}')">🗑</button>
+        <button class="btn-danger btn-small" data-action="delete-category" data-cat="${esc(k)}">🗑</button>
       </div>
     `).join('');
   }
@@ -392,15 +414,15 @@
     const el = document.getElementById('categoryTabs');
     const keys = Object.keys(categories);
     el.innerHTML = keys.map(k => `
-      <div class="tab ${k === selectedCategory ? 'active' : ''}" onclick="selectCategory('${k}')">
-        ${k.replace(/_/g,' ')}
+      <div class="tab ${k === selectedCategory ? 'active' : ''}" data-action="select" data-cat="${esc(k)}">
+        ${esc(label(k))}
       </div>
     `).join('');
   }
 
   function selectCategory(cat) {
     selectedCategory = cat;
-    document.getElementById('activeCatLabel').textContent = cat.replace(/_/g,' ');
+    document.getElementById('activeCatLabel').textContent = label(cat);
     renderCategoryList();
     renderCategoryTabs();
     renderTracks(cat);
@@ -419,11 +441,11 @@
       <div class="track-item" id="track_${i}">
         <div class="track-num">${i+1}</div>
         <div class="track-info">
-          <div class="track-name">${t.title || t.url}</div>
-          <div class="track-url">${t.url}</div>
+          <div class="track-name">${esc(t.title || t.url)}</div>
+          <div class="track-url">${esc(t.url)}</div>
         </div>
-        <button class="btn-success btn-small" onclick="playTrack('${cat}',${i})">▶</button>
-        <button class="btn-danger btn-small" onclick="removeTrack('${cat}',${i})">🗑</button>
+        <button class="btn-success btn-small" data-action="play-track" data-cat="${esc(cat)}" data-index="${i}">▶</button>
+        <button class="btn-danger btn-small" data-action="remove-track" data-cat="${esc(cat)}" data-index="${i}">🗑</button>
       </div>
     `).join('');
   }
@@ -433,37 +455,43 @@
     const name = input.value.trim();
     if (!name) return;
     const r = await api('POST', '/categories', {name});
-    if (r && r.ok) { input.value = ''; showToast('Category added'); await loadCategories(); }
+    if (r?.ok) { input.value = ''; showToast('Category added'); await loadCategories(); }
     else if (r) showToast(r.message, false);
   }
 
   async function deleteCategory(name) {
     if (!confirm(`Delete category "${name}"?`)) return;
-    const r = await api('DELETE', '/categories/' + name);
-    if (r && r.ok) { showToast('Deleted'); if (selectedCategory === name) selectedCategory = null; await loadCategories(); }
+    const r = await api('DELETE', '/categories/' + encodeURIComponent(name));
+    if (r?.ok) {
+      showToast('Deleted');
+      if (selectedCategory === name) {
+        selectedCategory = null;
+      }
+      await loadCategories();
+    }
   }
 
   async function addTrack() {
     const url = document.getElementById('trackUrl').value.trim();
     const title = document.getElementById('trackTitle').value.trim();
     if (!url || !selectedCategory) { showToast('Enter a URL', false); return; }
-    const r = await api('POST', '/categories/' + selectedCategory + '/tracks', {url, title});
-    if (r && r.ok) {
+    const r = await api('POST', '/categories/' + encodeURIComponent(selectedCategory) + '/tracks', {url, title});
+    if (r?.ok) {
       document.getElementById('trackUrl').value = '';
       document.getElementById('trackTitle').value = '';
       showToast('Track added');
       await loadCategories();
-    }
+    } else if (r) showToast(r.message, false);
   }
 
   async function removeTrack(cat, index) {
-    const r = await api('DELETE', '/categories/' + cat + '/tracks/' + index);
-    if (r && r.ok) { showToast('Removed'); await loadCategories(); }
+    const r = await api('DELETE', '/categories/' + encodeURIComponent(cat) + '/tracks/' + index);
+    if (r?.ok) { showToast('Removed'); await loadCategories(); }
   }
 
   async function playTrack(cat, index) {
     const track = categories[cat][index];
-    const r = await api('POST', '/play/track', {track});
+    const r = await api('POST', '/play/track', {category: cat, index});
     if (r) showToast(r.ok ? 'Playing: ' + (track.title || track.url) : r.message, r.ok);
   }
 
@@ -480,7 +508,7 @@
 
   async function pauseMusic() {
     const r = await api('POST', '/pause');
-    if (r && r.ok) {
+    if (r?.ok) {
       document.getElementById('btnPause').style.display = 'none';
       document.getElementById('btnResume').style.display = '';
     }
@@ -488,7 +516,7 @@
 
   async function resumeMusic() {
     const r = await api('POST', '/resume');
-    if (r && r.ok) {
+    if (r?.ok) {
       document.getElementById('btnResume').style.display = 'none';
       document.getElementById('btnPause').style.display = '';
     }
@@ -505,8 +533,9 @@
   }
 
   async function toggleLoop() {
-    loopEnabled = !loopEnabled;
-    const r = await api('POST', '/loop', {loop: loopEnabled});
+    const r = await api('POST', '/loop', {loop: !loopEnabled});
+    if (!r) return;
+    loopEnabled = r.loop;
     document.getElementById('btnLoop').textContent = '🔁 Loop: ' + (loopEnabled ? 'On' : 'Off');
     document.getElementById('btnLoop').style.background = loopEnabled ? 'var(--accent2)' : '';
   }
@@ -541,7 +570,7 @@
       document.getElementById('currentTitle').textContent = '—';
     }
 
-    document.getElementById('currentCategory').textContent = s.current_category ? '📁 ' + s.current_category.replace(/_/g,' ') : '';
+    document.getElementById('currentCategory').textContent = s.current_category ? '📁 ' + label(s.current_category) : '';
 
     const qi = document.getElementById('queueInfo');
     qi.style.display = s.queue_length > 0 ? '' : 'none';
@@ -552,14 +581,41 @@
     document.getElementById('btnLoop').style.background = s.loop ? 'var(--accent2)' : '';
   }
 
+  const actions = {
+    'join': () => joinChannel(),
+    'leave': () => leaveChannel(),
+    'add-category': () => addCategory(),
+    'add-track': () => addTrack(),
+    'play-category': () => playCategory(),
+    'pause': () => pauseMusic(),
+    'resume': () => resumeMusic(),
+    'skip': () => skipTrack(),
+    'stop': () => stopMusic(),
+    'toggle-loop': () => toggleLoop(),
+    'select': el => selectCategory(el.dataset.cat),
+    'delete-category': el => deleteCategory(el.dataset.cat),
+    'play-track': el => playTrack(el.dataset.cat, Number(el.dataset.index)),
+    'remove-track': el => removeTrack(el.dataset.cat, Number(el.dataset.index)),
+  };
+
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    e.stopPropagation();
+    actions[el.dataset.action]?.(el);
+  });
+
+  document.getElementById('guildSelect').addEventListener('change', loadChannels);
+  document.getElementById('volumeSlider').addEventListener('input', e => setVolume(e.target.value));
+
   async function init() {
     await loadGuilds();
     await loadCategories();
     await updateStatus();
-    statusInterval = setInterval(updateStatus, 3000);
+    setInterval(updateStatus, 3000);
   }
 
-  init();
+  await init();
 </script>
 </body>
 </html>

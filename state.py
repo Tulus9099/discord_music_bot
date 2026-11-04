@@ -1,8 +1,9 @@
+import copy
 import json
 import os
 import threading
 
-DATA_FILE = "playlists.json"
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "playlists.json")
 _lock = threading.Lock()
 
 DEFAULT_DATA = {
@@ -15,14 +16,17 @@ DEFAULT_DATA = {
 
 def _load():
     if not os.path.exists(DATA_FILE):
-        _save(DEFAULT_DATA)
-        return DEFAULT_DATA
-    with open(DATA_FILE, "r") as f:
+        data = copy.deepcopy(DEFAULT_DATA)
+        _save(data)
+        return data
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def _save(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    tmp_file = DATA_FILE + ".tmp"
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_file, DATA_FILE)
 
 def get_categories():
     with _lock:

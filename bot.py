@@ -8,7 +8,6 @@ import state
 static_ffmpeg.add_paths()
 
 intents = discord.Intents.default()
-intents.message_content = True
 intents.voice_states = True
 
 bot = discord.Client(intents=intents)
@@ -42,7 +41,7 @@ def get_audio_url(youtube_url):
         if "entries" in info:
             info = info["entries"][0]
         headers = info.get("http_headers") or {}
-        return info["url"], info.get("title", youtube_url), info.get("acodec", ""), headers
+        return info["url"], info.get("title", youtube_url), headers
 
 
 def build_ffmpeg_before_opts(headers):
@@ -71,7 +70,7 @@ async def play_next(guild_id):
 
     try:
         loop = asyncio.get_running_loop()
-        audio_url, title, acodec, headers = await loop.run_in_executor(
+        audio_url, title, headers = await loop.run_in_executor(
             None, get_audio_url, track["url"]
         )
         track["title"] = title
@@ -79,20 +78,14 @@ async def play_next(guild_id):
 
         before_opts = build_ffmpeg_before_opts(headers)
 
-        if acodec == "opus":
-            source = discord.FFmpegOpusAudio(
+        source = discord.PCMVolumeTransformer(
+            discord.FFmpegPCMAudio(
                 audio_url,
                 before_options=before_opts,
                 options=FFMPEG_OPTS,
-                codec="copy",
-            )
-        else:
-            source = discord.FFmpegOpusAudio(
-                audio_url,
-                before_options=before_opts,
-                options=FFMPEG_OPTS,
-                bitrate=128,
-            )
+            ),
+            volume=state.bot_state["volume"],
+        )
 
         def after_play(error):
             if error:
@@ -104,6 +97,16 @@ async def play_next(guild_id):
     except Exception as e:
         print(f"Error playing track: {e}")
         state.bot_state["is_playing"] = False
+
+
+async def connect_with_retry(channel, attempts=3):
+    for attempt in range(1, attempts + 1):
+        try:
+            return await channel.connect(timeout=30.0, reconnect=True, self_deaf=True)
+        except Exception:
+            if attempt == attempts:
+                raise
+            await asyncio.sleep(2)
 
 
 async def join_channel(guild_id, channel_id):
@@ -119,23 +122,16 @@ async def join_channel(guild_id, channel_id):
         return False, "Not a voice channel"
 
     vc = state.bot_state["voice_client"]
+    if vc and vc.is_connected() and vc.channel.id == channel.id:
+        return True, "Already in this channel"
+
     try:
         if vc and vc.is_connected():
-            if vc.channel.id == channel.id:
-                return True, "Already in this channel"
             await vc.move_to(channel)
         else:
-            for attempt in range(3):
-                try:
-                    vc = await channel.connect(timeout=30.0, reconnect=True, self_deaf=True)
-                    state.bot_state["voice_client"] = vc
-                    break
-                except Exception as e:
-                    if attempt == 2:
-                        raise
-                    await asyncio.sleep(2)
+            state.bot_state["voice_client"] = await connect_with_retry(channel)
     except Exception as e:
-        return False, f"Failed to connect: {str(e)}"
+        return False, f"Failed to connect: {e}"
 
     state.bot_state["guild_id"] = guild_id
     state.bot_state["channel_id"] = channel_id
@@ -144,14 +140,15 @@ async def join_channel(guild_id, channel_id):
 
 async def leave_channel():
     vc = state.bot_state["voice_client"]
-    if vc and vc.is_connected():
-        await vc.disconnect()
-        state.bot_state["voice_client"] = None
-        state.bot_state["is_playing"] = False
-        state.bot_state["current_track"] = None
-        state.bot_state["queue"] = []
-        return True
-    return False
+    if vc is None:
+        return False
+    state.bot_state["queue"] = []
+    state.bot_state["current_track"] = None
+    state.bot_state["is_playing"] = False
+    state.bot_state["voice_client"] = None
+    was_connected = vc.is_connected()
+    await vc.disconnect(force=True)
+    return was_connected
 
 
 async def play_category(category):
@@ -190,18 +187,18 @@ async def play_single_track(track):
     return True, "Playing track"
 
 
-async def stop_music():
+def stop_music():
     vc = state.bot_state["voice_client"]
-    if vc and vc.is_playing():
-        vc.stop()
-        state.bot_state["is_playing"] = False
+    if vc and (vc.is_playing() or vc.is_paused()):
         state.bot_state["queue"] = []
         state.bot_state["current_track"] = None
+        vc.stop()
+        state.bot_state["is_playing"] = False
         return True
     return False
 
 
-async def pause_music():
+def pause_music():
     vc = state.bot_state["voice_client"]
     if vc and vc.is_playing():
         vc.pause()
@@ -210,7 +207,7 @@ async def pause_music():
     return False
 
 
-async def resume_music():
+def resume_music():
     vc = state.bot_state["voice_client"]
     if vc and vc.is_paused():
         vc.resume()
@@ -219,7 +216,7 @@ async def resume_music():
     return False
 
 
-async def skip_track():
+def skip_track():
     vc = state.bot_state["voice_client"]
     if vc and (vc.is_playing() or vc.is_paused()):
         vc.stop()
@@ -227,10 +224,10 @@ async def skip_track():
     return False
 
 
-async def set_volume(volume):
+def set_volume(volume):
     vc = state.bot_state["voice_client"]
     state.bot_state["volume"] = volume
-    if vc and vc.source:
+    if vc and isinstance(vc.source, discord.PCMVolumeTransformer):
         vc.source.volume = volume
     return True
 

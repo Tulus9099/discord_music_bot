@@ -8,3 +8,17 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Local data
+playlists.json
+playlists.json.tmp
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
