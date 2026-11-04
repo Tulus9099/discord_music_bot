@@ -13,6 +13,8 @@ import state
 
 REAL_CALL_IN_LOOP = web.call_in_loop
 REAL_FETCH_TRACKS = discord_bot.fetch_tracks
+# Deterministic stand-in for the random shuffler: reverses the order instead.
+REVERSING_SHUFFLER = types.SimpleNamespace(shuffle=lambda items: items.reverse())
 
 
 def audio_info(title="Title", duration=120):
@@ -76,16 +78,15 @@ def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "call_in_loop", lambda func, *args: func(*args))
     # Never reach YouTube from tests; the title is derived from the URL instead.
     monkeypatch.setattr(discord_bot, "fetch_tracks", lambda url: [{"url": url, "title": "YT " + url[-4:]}])
-    discord_bot._prefetched.clear()
-    original = dict(state.bot_state)
-    yield
-    state.bot_state.clear()
-    state.bot_state.update(original)
+    # Fresh copies per test; monkeypatch restores the originals afterwards.
+    monkeypatch.setattr(state, "bot_state", dict(state.bot_state))
+    monkeypatch.setattr(discord_bot, "_prefetched", {})
+    monkeypatch.setattr(discord_bot, "_background_tasks", set())
 
 
 @pytest.fixture
-def client():
-    web.app.config["TESTING"] = True
+def client(monkeypatch):
+    monkeypatch.setitem(web.app.config, "TESTING", True)
     return web.app.test_client()
 
 
@@ -291,13 +292,10 @@ def test_no_cors_headers(client):
     assert "Access-Control-Allow-Origin" not in r.headers
 
 
-def test_trusted_hosts_blocks_foreign_host(client):
-    web.app.config["TRUSTED_HOSTS"] = ["localhost", "127.0.0.1"]
-    try:
-        assert client.get("/api/status", headers={"Host": "evil.example"}).status_code == 400
-        assert client.get("/api/status", headers={"Host": "localhost:5000"}).status_code == 200
-    finally:
-        web.app.config["TRUSTED_HOSTS"] = None
+def test_trusted_hosts_blocks_foreign_host(client, monkeypatch):
+    monkeypatch.setitem(web.app.config, "TRUSTED_HOSTS", ["localhost", "127.0.0.1"])
+    assert client.get("/api/status", headers={"Host": "evil.example"}).status_code == 400
+    assert client.get("/api/status", headers={"Host": "localhost:5000"}).status_code == 200
 
 
 def test_message_content_intent_disabled():
@@ -476,51 +474,52 @@ def test_fetched_titles_are_truncated(client, monkeypatch):
     assert len(title) == web.MAX_TITLE_LENGTH
 
 
-class FakeYoutubeDL:
-    info = {}
-    options = None
+def install_fake_youtube_dl(monkeypatch, info):
+    """Replaces yt_dlp.YoutubeDL for one test; returns the options it was created with."""
+    used_options = {}
 
-    def __init__(self, options):
-        FakeYoutubeDL.options = options
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            used_options.update(options)
 
-    def __enter__(self):
-        return self
+        def __enter__(self):
+            return self
 
-    def __exit__(self, *exc):
-        return False
+        def __exit__(self, *exc):
+            return False
 
-    def extract_info(self, url, download):
-        return FakeYoutubeDL.info
+        def extract_info(self, url, download):
+            return info
+
+    monkeypatch.setattr(discord_bot.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    return used_options
 
 
 def test_fetch_tracks_reads_playlist_entries(monkeypatch):
-    FakeYoutubeDL.info = {"entries": iter([
+    options = install_fake_youtube_dl(monkeypatch, {"entries": iter([
         {"id": "a1", "title": "First"},
         {"id": "b2", "title": "[Private video]"},
         None,
         {"id": "c3", "title": None},
-    ])}
-    monkeypatch.setattr(discord_bot.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    ])})
     tracks = REAL_FETCH_TRACKS(PLAYLIST_URL)
     assert tracks == [
         {"url": "https://www.youtube.com/watch?v=a1", "title": "First"},
         {"url": "https://www.youtube.com/watch?v=c3", "title": "c3"},
     ]
-    assert FakeYoutubeDL.options["noplaylist"] is False
+    assert options["noplaylist"] is False
 
 
 def test_fetch_tracks_limits_playlist_size(monkeypatch):
-    FakeYoutubeDL.info = {"entries": ({"id": f"v{i}", "title": str(i)} for i in range(1000))}
-    monkeypatch.setattr(discord_bot.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    install_fake_youtube_dl(monkeypatch, {"entries": ({"id": f"v{i}", "title": str(i)} for i in range(1000))})
     assert len(REAL_FETCH_TRACKS(PLAYLIST_URL)) == discord_bot.MAX_PLAYLIST_TRACKS
 
 
 def test_fetch_tracks_single_video_ignores_playlist_param(monkeypatch):
-    FakeYoutubeDL.info = {"title": "One video"}
-    monkeypatch.setattr(discord_bot.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    options = install_fake_youtube_dl(monkeypatch, {"title": "One video"})
     url = YT_URL + "&list=PL123"
     assert REAL_FETCH_TRACKS(url) == [{"url": url, "title": "One video"}]
-    assert FakeYoutubeDL.options["noplaylist"] is True
+    assert options["noplaylist"] is True
 
 
 # ---------- Shuffle, queue and status ----------
@@ -556,7 +555,7 @@ def test_status_queue_preview_is_limited(client):
 
 def test_play_category_with_shuffle_randomizes_order(client, monkeypatch):
     connected_client_with_tracks(client, monkeypatch, count=8)
-    discord_bot.random.seed(1)
+    monkeypatch.setattr(discord_bot, "_shuffler", REVERSING_SHUFFLER)
     client.post("/api/shuffle", json={"shuffle": True})
     client.post("/api/play/category", json={"category": "combat_music"})
     played = [state.bot_state["current_track"]["url"]] + [t["url"] for t in state.bot_state["queue"]]
@@ -565,10 +564,10 @@ def test_play_category_with_shuffle_randomizes_order(client, monkeypatch):
     assert played != original
 
 
-def test_enabling_shuffle_reshuffles_remaining_queue(client):
+def test_enabling_shuffle_reshuffles_remaining_queue(client, monkeypatch):
     queue = [{"url": f"{YT_URL}{i}"} for i in range(10)]
     state.bot_state["queue"] = list(queue)
-    discord_bot.random.seed(2)
+    monkeypatch.setattr(discord_bot, "_shuffler", REVERSING_SHUFFLER)
     r = client.post("/api/shuffle", json={"shuffle": True})
     assert r.get_json() == {"ok": True, "shuffle": True}
     assert state.bot_state["queue"] != queue
@@ -625,7 +624,7 @@ def test_next_track_is_prefetched_and_reused(client, monkeypatch):
 def test_stale_prefetch_is_ignored(monkeypatch):
     now = [5000.0]
     monkeypatch.setattr(discord_bot.time, "monotonic", lambda: now[0])
-    discord_bot._prefetched["u"] = (now[0], audio_info())
+    monkeypatch.setitem(discord_bot._prefetched, "u", (now[0], audio_info()))
     now[0] += discord_bot.PREFETCH_MAX_AGE + 1
     assert discord_bot.take_prefetched("u") is None
 

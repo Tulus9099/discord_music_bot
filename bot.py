@@ -2,7 +2,7 @@ import discord
 import asyncio
 import itertools
 import logging
-import random
+import secrets
 import shlex
 import time
 from urllib.parse import urlparse
@@ -58,6 +58,8 @@ JOIN_TIMEOUT = VOICE_CONNECT_ATTEMPTS * (VOICE_CONNECT_TIMEOUT + VOICE_RETRY_DEL
 # Stream URLs from YouTube stay valid for hours; refresh prefetched ones after 30 minutes anyway.
 PREFETCH_MAX_AGE = 30 * 60
 AUTO_LEAVE_DELAY = 60
+
+_shuffler = secrets.SystemRandom()
 
 # YouTube URL -> (resolved_at, audio info). Only touched from the bot's event loop thread.
 _prefetched = {}
@@ -276,7 +278,7 @@ async def play_category(category):
 
     queue = list(tracks)
     if state.bot_state["shuffle"]:
-        random.shuffle(queue)
+        _shuffler.shuffle(queue)
     state.bot_state["current_category"] = category
     state.bot_state["queue"] = queue
     state.bot_state["current_track"] = None
@@ -350,7 +352,7 @@ def skip_track():
 def set_shuffle(enabled):
     state.bot_state["shuffle"] = enabled
     if enabled:
-        random.shuffle(state.bot_state["queue"])
+        _shuffler.shuffle(state.bot_state["queue"])
     return enabled
 
 

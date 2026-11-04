@@ -220,6 +220,29 @@ def delete_category(name):
     return jsonify({"ok": ok})
 
 
+class TrackLookupError(Exception):
+    def __init__(self, message, status):
+        super().__init__(message)
+        self.status = status
+
+
+def resolve_tracks(url, title):
+    """Returns the tracks to add for a link: the given title, or titles read from YouTube."""
+    playlist = discord_bot.is_playlist_url(url)
+    if title and not playlist:
+        return [{"url": url, "title": title}]
+    try:
+        tracks = discord_bot.fetch_tracks(url)
+    except Exception as e:
+        print(f"Could not read {url} from YouTube: {e!r}")
+        if playlist:
+            raise TrackLookupError("Could not read this playlist from YouTube", 502) from e
+        return [{"url": url, "title": url}]
+    if not tracks:
+        raise TrackLookupError("No playable videos found", 400)
+    return tracks
+
+
 @app.route("/api/categories/<category>/tracks", methods=["POST"])
 def add_track(category):
     if not CATEGORY_NAME_RE.match(category):
@@ -235,20 +258,10 @@ def add_track(category):
         return jsonify({"ok": False, "message": "url required"}), 400
     if not is_valid_track_url(url):
         return jsonify({"ok": False, "message": "Only YouTube links are allowed"}), 400
-
-    playlist = discord_bot.is_playlist_url(url)
-    if title and not playlist:
-        tracks = [{"url": url, "title": title}]
-    else:
-        try:
-            tracks = discord_bot.fetch_tracks(url)
-        except Exception as e:
-            print(f"Could not read {url} from YouTube: {e!r}")
-            if playlist:
-                return jsonify({"ok": False, "message": "Could not read this playlist from YouTube"}), 502
-            tracks = [{"url": url, "title": url}]
-        if not tracks:
-            return jsonify({"ok": False, "message": "No playable videos found"}), 400
+    try:
+        tracks = resolve_tracks(url, title)
+    except TrackLookupError as e:
+        return jsonify({"ok": False, "message": str(e)}), e.status
     for track in tracks:
         track["title"] = track["title"][:MAX_TITLE_LENGTH]
     state.add_tracks(category, tracks)

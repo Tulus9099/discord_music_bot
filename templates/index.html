@@ -279,8 +279,7 @@
     .layout { grid-template-columns: 1fr; height: auto; }
     .sidebar { border-right: none; border-top: 1px solid var(--border); }
     /* The player is used most during a session, so it goes first on small screens. */
-    .main { order: -1; }
-    .main { padding: 16px; }
+    .main { order: -1; padding: 16px; }
     .header { padding: 12px 16px; }
     .status-bar { margin-left: 0; width: 100%; }
     .toast { right: 16px; bottom: 16px; }
@@ -387,7 +386,7 @@
   </div>
 </div>
 
-<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+<output class="toast hidden" id="toast" aria-live="polite"></output>
 
 <script type="module">
   const STATUS_INTERVAL = 3000;
