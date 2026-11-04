@@ -32,8 +32,8 @@ You don't need to install FFmpeg manually. The `static-ffmpeg` package downloads
 ## Installation
 
 ```bash
-git clone <repository-url>
-cd discord_play_music
+git clone https://github.com/keeeleee/discord_music_bot.git
+cd discord_music_bot
 uv sync
 ```
 
