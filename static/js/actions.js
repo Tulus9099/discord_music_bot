@@ -1,19 +1,21 @@
 // Event wiring. Every button carries a data-action name; one click listener on the document runs it.
 import {$} from './core/dom.js';
-import {state} from './core/store.js';
+import {memory} from './core/memory.js';
+import {state, view} from './core/store.js';
 import {refreshMenus, closeMenuOnOutsideClick, closeMenuOnScroll} from './ui/menus.js';
-import {applyTheme, toggleStyle} from './ui/themes.js';
+import {applyTheme, toggleOption, toggleStyle} from './ui/themes.js';
 import {setDeckMode, setTrackMode} from './ui/dialogs.js';
 import {joinChannel, leaveChannel, loadChannels} from './voice/voice.js';
-import {addCategory, deleteCategory, selectCategory, showPlaying} from './playlist/categories.js';
+import {deleteCategory, selectCategory, showPlaying} from './playlist/categories.js';
 import {
   addTrack, bulkCopy, bulkRemove, clearPicks, pickAll, togglePick, openAddTrack, playCategory,
   playTrack, removeTrack, saveTrackEdit, renderTracks,
 } from './playlist/tracks.js';
 import {
-  addGroup, deleteGroup, deckAdd, deckDelete, deckPlay, openAddSound, renderDeck, saveTileEdit, setTileColor,
+  deleteGroup, deckAdd, deckDelete, deckPlay, openAddSound, renderDeck, saveTileEdit, setAddColor, setTileColor,
 } from './soundboard/deck.js';
 import {simpleCommand, seekBy, toggleLoop, toggleShuffle} from './player/status.js';
+import {addItem, openManage, removeItem, saveRow, setColor, togglePicker} from './ui/manage.js';
 
 // Saves whichever inline edit is open (a track or a sound).
 async function saveEdit() {
@@ -25,7 +27,6 @@ async function saveEdit() {
 const actions = {
   'join': () => joinChannel(),
   'leave': () => leaveChannel(),
-  'add-category': () => addCategory(),
   'add-track': () => addTrack(),
   'play-category': () => playCategory(),
   'pause': () => simpleCommand('/pause'),
@@ -48,7 +49,9 @@ const actions = {
   'deck-mode': el => setDeckMode(el.dataset.mode),
   'style-toggle': () => toggleStyle(),
   'theme': el => applyTheme(el.dataset.theme),
-  'deck-filter': el => { state.deckFilter = el.dataset.group; renderDeck(true); },
+  'option-toggle': el => toggleOption(el.dataset.option),
+  'add-color': el => setAddColor(el.dataset.color),
+  'deck-filter': el => { state.deckFilter = el.dataset.group; memory.set('deckGroup', state.deckFilter); renderDeck(true); },
   'show-playing': () => showPlaying(),
   'open-add-track': () => openAddTrack(),
   'track-mode': el => setTrackMode(el.dataset.mode),
@@ -59,15 +62,20 @@ const actions = {
   'bulk-all': () => pickAll(),
   'bulk-clear': () => clearPicks(),
   'bulk-copy': el => bulkCopy(el.dataset.cat),
-  'deck-group-new': () => { const row = $('deckGroupAdd'); row.hidden = !row.hidden; if (!row.hidden) $('newGroupInput').focus(); },
-  'add-group': () => addGroup(),
   'delete-group': el => deleteGroup(el.dataset.group),
   'bulk-remove': () => bulkRemove(),
   'select': el => selectCategory(el.dataset.cat),
-  'cat-new': () => { $('catAdd').hidden = !$('catAdd').hidden; if (!$('catAdd').hidden) $('newCatInput').focus(); },
   'delete-category': el => deleteCategory(el.dataset.cat),
   'play-track': el => playTrack(el.dataset.cat, Number(el.dataset.index)),
   'remove-track': el => removeTrack(el.dataset.cat, Number(el.dataset.index)),
+  'open-manage': el => openManage(el.dataset.kind),
+  'clear-track-search': () => { $('trackSearch').value = ''; state.trackQuery = ''; view.tracks(); },
+  'close-manage': () => $('manageDialog').close(),
+  'manage-save': el => saveRow(el),
+  'manage-delete': el => removeItem(el.dataset.name),
+  'manage-color': el => setColor(el.dataset.name, el.dataset.color),
+  'manage-picker': el => togglePicker(el.dataset.name),
+  'manage-add': () => addItem(),
 };
 
 async function runAction(el) {
@@ -118,8 +126,8 @@ export function installEvents() {
     if (e.key === 'Enter') {
       if (e.target.id === 'editTitle' || e.target.id === 'editUrl') { saveEdit(); return; }
       if (e.target.matches('[role="button"][data-action]')) runAction(e.target);
-      else if (e.target.id === 'newCatInput') addCategory();
-      else if (e.target.id === 'newGroupInput') addGroup();
+      else if (e.target.id === 'manageNew') addItem();
+      else if (e.target.classList.contains('manage-name')) saveRow(e.target);
       else if (e.target.id === 'deckUrl' || e.target.id === 'deckLabel') deckAdd();
       else if (e.target.id === 'trackTitle' || (e.target.id === 'trackUrl' && (e.metaKey || e.ctrlKey))) runAction($('btnAddTrack'));
       return;

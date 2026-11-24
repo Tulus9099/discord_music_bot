@@ -4,12 +4,13 @@ from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
 from app.container import current_container
-from app.validation import COLOR_RE, json_body, normalise_group
+from app.validation import is_valid_colour, json_body, normalise_group
 from audio import youtube
 from config import MAX_DECK_TILES, MAX_GROUP_LENGTH, MAX_TITLE_LENGTH, SEEK_TIMEOUT
 from services.tracks import (
     TrackError, is_valid_track_url, read_track_edit, resolve_tracks, sound_error, store_upload,
 )
+from storage.soundboard import UNSET
 
 bp = Blueprint("soundboard", __name__, url_prefix="/api")
 
@@ -33,6 +34,36 @@ def add_deck_group():
         return jsonify({"ok": False, "message": f"Group name required (up to {MAX_GROUP_LENGTH} characters)"}), 400
     ok = c.soundboard.add_group(name)
     return jsonify({"ok": ok, "message": "Group added" if ok else "Group already exists"}), (200 if ok else 400)
+
+
+@bp.route("/deck/groups/colors", methods=["GET"])
+def deck_group_colors():
+    return jsonify(current_container().soundboard.group_colors())
+
+
+@bp.route("/deck/groups/<path:name>", methods=["PUT"])
+def update_deck_group(name):
+    """Renames a group ({"name": new}) and/or sets its colour ({"color": "#rrggbb" or null})."""
+    c = current_container()
+    if not c.soundboard.group_exists(name):
+        return jsonify({"ok": False, "message": "Group not found"}), 404
+    data = json_body()
+    if "name" not in data and "color" not in data:
+        return jsonify({"ok": False, "message": "Nothing to change"}), 400
+    new_name = None
+    if "name" in data:
+        new_name = normalise_group(data["name"]) if isinstance(data["name"], str) else None
+        if not new_name:
+            return jsonify({"ok": False, "message": f"Group name required (up to {MAX_GROUP_LENGTH} characters)"}), 400
+    color = data.get("color", UNSET)
+    if color is not UNSET and color is not None:
+        if not is_valid_colour(color):
+            return jsonify({"ok": False, "message": "Colour must look like #7c6cff"}), 400
+        color = color.lower()
+    result = c.soundboard.update_group(name, new_name, color)
+    if result == "taken":
+        return jsonify({"ok": False, "message": "Group already exists"}), 400
+    return jsonify({"ok": result == "ok"})
 
 
 @bp.route("/deck/groups/<path:name>", methods=["DELETE"])
@@ -65,7 +96,10 @@ def add_deck_tile():
     group = normalise_group(data.get("group"))
     if group is None:
         return jsonify({"ok": False, "message": f"Group must be text up to {MAX_GROUP_LENGTH} characters"}), 400
-    c.soundboard.add_tile(tracks[0]["title"][:MAX_TITLE_LENGTH], url=url, group=group)
+    color = data.get("color")
+    if color is not None and not is_valid_colour(color):
+        return jsonify({"ok": False, "message": "Colour must look like #7c6cff"}), 400
+    c.soundboard.add_tile(tracks[0]["title"][:MAX_TITLE_LENGTH], url=url, group=group, color=color.lower() if color else None)
     return jsonify({"ok": True})
 
 
@@ -87,7 +121,11 @@ def upload_deck_tile():
     if group is None:
         c.sounds.remove(stored)
         return jsonify({"ok": False, "message": f"Group must be text up to {MAX_GROUP_LENGTH} characters"}), 400
-    c.soundboard.add_tile(title[:MAX_TITLE_LENGTH], file=stored, group=group)
+    color = request.form.get("color") or None
+    if color is not None and not is_valid_colour(color):
+        c.sounds.remove(stored)
+        return jsonify({"ok": False, "message": "Colour must look like #7c6cff"}), 400
+    c.soundboard.add_tile(title[:MAX_TITLE_LENGTH], file=stored, group=group, color=color.lower() if color else None)
     return jsonify({"ok": True})
 
 
@@ -101,7 +139,7 @@ def update_deck_tile(index):
     data = json_body()
     if "color" in data:
         color = data["color"]
-        if color is not None and not (isinstance(color, str) and COLOR_RE.match(color)):
+        if color is not None and not is_valid_colour(color):
             return jsonify({"ok": False, "message": "Colour must look like #7c6cff"}), 400
         c.soundboard.set_tile_field(index, "color", color.lower() if color else None)
     if "group" in data:

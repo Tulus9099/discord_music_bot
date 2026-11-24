@@ -1,3 +1,6 @@
+UNSET = object()
+
+
 class SoundboardRepository:
     """Soundboard tiles and their groups."""
 
@@ -10,10 +13,52 @@ class SoundboardRepository:
     def groups(self):
         return list(self._store.read().get("deck_groups", []))
 
-    def add_tile(self, title, url=None, file=None, group=None):
+    def group_colors(self):
+        return dict(self._store.read().get("group_colors", {}))
+
+    def group_exists(self, name):
+        data = self._store.read()
+        return name in data.get("deck_groups", []) or any(t.get("group") == name for t in data.get("deck", []))
+
+    def update_group(self, name, new_name=None, color=UNSET):
+        """Renames a group (in the group list and on every tile) and/or sets its colour (None clears it).
+
+        Returns "ok", "missing" or "taken". A rename to the same name is not a clash."""
+        def change(data):
+            groups = data.get("deck_groups", [])
+            tiles = data.get("deck", [])
+            exists = name in groups or any(t.get("group") == name for t in tiles)
+            if not exists:
+                return "missing", False
+            target = name
+            if new_name is not None and new_name != name:
+                taken = new_name in groups or any(t.get("group") == new_name for t in tiles)
+                if taken:
+                    return "taken", False
+                data["deck_groups"] = [new_name if g == name else g for g in groups]
+                for tile in tiles:
+                    if tile.get("group") == name:
+                        tile["group"] = new_name
+                colors = data.get("group_colors", {})
+                if name in colors:
+                    colors[new_name] = colors.pop(name)
+                target = new_name
+            if color is not UNSET:
+                colors = data.setdefault("group_colors", {})
+                if color is None:
+                    colors.pop(target, None)
+                else:
+                    colors[target] = color
+            return "ok", True
+
+        return self._store.edit(change)
+
+    def add_tile(self, title, url=None, file=None, group=None, color=None):
         tile = {"title": title}
         if group:
             tile["group"] = group
+        if color:
+            tile["color"] = color
         if file:
             tile["file"] = file
         else:
@@ -45,6 +90,7 @@ class SoundboardRepository:
             for tile in data.get("deck", []):
                 if tile.get("group") == name:
                     tile.pop("group", None)
+            data.get("group_colors", {}).pop(name, None)
             return True, True
 
         return self._store.edit(change)

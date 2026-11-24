@@ -4,7 +4,7 @@ import time
 
 from audio import youtube
 from audio.mixer import Channel
-from audio.sources import build_ffmpeg_before_opts, create_audio_source, create_local_source
+from audio.sources import build_ffmpeg_before_opts, create_audio_source, create_local_source, probe_duration
 from config import MAX_PARALLEL_SOUNDS, PREFETCH_MAX_AGE
 
 
@@ -276,8 +276,10 @@ class Player:
     async def resolve_track(self, track):
         """Returns what the player needs for a playlist entry: a stored file, or a YouTube link resolved to a stream."""
         if track.get("file"):
-            return {"url": self.sounds.path(track["file"]), "title": track.get("title") or track["file"],
-                    "acodec": "", "headers": {}, "duration": None, "local": True}
+            path = self.sounds.path(track["file"])
+            duration = await asyncio.get_running_loop().run_in_executor(None, probe_duration, path)
+            return {"url": path, "title": track.get("title") or track["file"],
+                    "acodec": "", "headers": {}, "duration": duration, "local": True}
         return await asyncio.get_running_loop().run_in_executor(None, youtube.get_audio_url, track["url"])
 
     async def prefetch_next(self):

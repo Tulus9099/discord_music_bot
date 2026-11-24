@@ -1,4 +1,4 @@
-import {$, esc, label} from '../core/dom.js';
+import {$, esc, label, tintClass, tintStyle} from '../core/dom.js';
 import {api} from '../core/api.js';
 import {memory} from '../core/memory.js';
 import {state, view} from '../core/store.js';
@@ -7,8 +7,8 @@ import {showToast} from '../ui/toast.js';
 export function renderCategoryTabs() {
   const status = state.status;
   $('categoryTabs').innerHTML = Object.keys(state.categories).map(k => `
-      <button class="tab ${k === state.selectedCategory ? 'active' : ''}" role="tab" aria-selected="${k === state.selectedCategory}" data-action="select" data-cat="${esc(k)}">${k === status.current_category && status.current_track ? '<span class="eq tab-eq" aria-label="Playing from this category"><i></i><i></i><i></i></span>' : ''}${esc(label(k))} <span class="chip-count">${state.categories[k].length}</span></button>
-    `).join('') + '<button class="tab tab-add" role="tab" aria-selected="false" data-action="cat-new" title="Add a category">+ New</button>';
+      <button class="tab ${tintClass(state.categoryColors, k)} ${k === state.selectedCategory ? 'active' : ''}" ${tintStyle(state.categoryColors, k)} role="tab" aria-selected="${k === state.selectedCategory}" data-action="select" data-cat="${esc(k)}">${k === status.current_category && status.current_track ? '<span class="eq tab-eq" aria-label="Playing from this category"><i></i><i></i><i></i></span>' : ''}${esc(label(k))} <span class="chip-count">${state.categories[k].length}</span></button>
+    `).join('');
 }
 
 // Enables the "Add tracks" button only when there is a playlist to add to.
@@ -18,9 +18,10 @@ export function updateAddForm() {
 }
 
 export async function loadCategories() {
-  const data = await api('GET', '/categories');
+  const [data, colors] = await Promise.all([api('GET', '/categories'), api('GET', '/categories/colors')]);
   if (!data) return;
   state.categories = data;
+  if (colors && typeof colors === 'object') state.categoryColors = colors;
   if (state.selectedCategory && !state.categories[state.selectedCategory]) state.selectedCategory = null;
   renderCategoryTabs();
   view.tracks();
@@ -42,21 +43,6 @@ export function showPlaying() {
   if (state.selectedCategory !== cat) selectCategory(cat);
   state.scrolledTo = null;
   document.querySelector('#trackList .track-item.playing')?.scrollIntoView({block: 'center', behavior: 'smooth'});
-}
-
-export async function addCategory() {
-  const input = $('newCatInput');
-  const name = input.value.trim();
-  if (!name) { input.focus(); return; }
-  const r = await api('POST', '/categories', {name});
-  if (r?.ok) {
-    input.value = '';
-    $('catAdd').hidden = true;
-    showToast('Category added');
-    await loadCategories();
-  } else if (r) {
-    showToast(r.message, false);
-  }
 }
 
 export async function deleteCategory(name) {

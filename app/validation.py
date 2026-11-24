@@ -17,6 +17,11 @@ def is_valid_snowflake(value):
     return isinstance(value, str) and value.isdigit() and len(value) <= 20
 
 
+def is_valid_colour(value):
+    """A #rrggbb colour (None is not a colour; callers decide what None means)."""
+    return isinstance(value, str) and bool(COLOR_RE.match(value))
+
+
 def is_finite_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 

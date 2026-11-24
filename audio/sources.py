@@ -1,4 +1,6 @@
 import shlex
+import shutil
+import subprocess
 
 import discord
 import static_ffmpeg
@@ -33,3 +35,18 @@ def create_audio_source(audio_url, before_opts):
 
 def create_local_source(path):
     return discord.FFmpegPCMAudio(path, options=FFMPEG_OPTS)
+
+
+def probe_duration(path):
+    """Length of a local audio file in seconds, or None when ffprobe cannot tell."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        return None
+    try:
+        out = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+        return float(out)
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return None

@@ -1,10 +1,28 @@
+import os
+import re
+
 from flask import Blueprint, jsonify
 
 from app.container import current_container
+from audio.peaks import waveform
 from app.validation import is_finite_number, json_body
 from config import SEEK_TIMEOUT, STATUS_QUEUE_PREVIEW
 
 bp = Blueprint("playback", __name__, url_prefix="/api")
+
+
+STORED_SOUND_RE = re.compile(r"^[0-9a-f]{32}\.(mp3|wav|ogg|opus|m4a|flac|webm)$")
+
+
+@bp.route("/peaks/<name>", methods=["GET"])
+def peaks(name):
+    c = current_container()
+    if not STORED_SOUND_RE.match(name) or not os.path.exists(c.sounds.path(name)):
+        return jsonify({"ok": False, "message": "Sound not found"}), 404
+    values = waveform(c.sounds.path(name))
+    if values is None:
+        return jsonify({"ok": False, "message": "Could not read the audio"}), 500
+    return jsonify(values)
 
 
 @bp.route("/status", methods=["GET"])

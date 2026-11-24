@@ -2,7 +2,11 @@
 export const state = {
   status: {},               // last /api/status answer
   statusReceivedAt: 0,      // Date.now() when that status arrived (for the progress timer)
+  waveformKey: null,        // track whose waveform is drawn (file or url)
+  waveformPeaks: null,      // its bar heights, 0..1
   categories: {},           // playlists: name -> tracks
+  categoryColors: {},       // playlist name -> #rrggbb (missing = automatic)
+  groupColors: {},          // soundboard group name -> #rrggbb (missing = automatic)
   selectedCategory: null,   // playlist shown in the track list
   deck: [],                 // soundboard tiles
   deckGroupsStored: [],     // groups created by the user, also those without tiles yet

@@ -37,29 +37,29 @@ export function renderTracks() {
   const {status, categories, picked, editing} = state;
   const selectedCategory = state.selectedCategory;
   $('btnPlayCategory').classList.toggle('invisible', !selectedCategory || !(categories[selectedCategory]?.length));
-  $('catMenu').innerHTML = moreMenu('cat:' + (selectedCategory ?? ''), [
-    {action: 'cat-new', label: '＋ New playlist', data: {}},
-    ...(selectedCategory ? [
-      {action: 'open-add-track', label: '＋ Add tracks', data: {}},
-      {action: 'delete-category', label: '🗑 Delete this playlist', danger: true, data: {cat: selectedCategory}},
-    ] : []),
+  // Same two entries as the soundboard menu: add, then manage.
+  $('catMenu').innerHTML = moreMenu('cat:menu', [
+    {action: 'open-add-track', label: '＋ Add tracks', data: {}},
+    {action: 'open-manage', label: '✎ Manage playlists', data: {kind: 'playlist'}},
   ]);
   $('btnShowPlaying').classList.add('invisible');
   updateAddForm();
   if (!selectedCategory) {
-    el.innerHTML = '<div class="empty"><span class="icon">🎼</span>Choose a category to see its tracks</div>';
+    el.innerHTML = state.categories && Object.keys(state.categories).length
+      ? '<div class="empty"><span class="icon">🎼</span>Choose a playlist above to see its tracks.</div>'
+      : `<div class="empty"><span class="icon">🎼</span>No playlists yet.<div class="empty-actions"><button class="btn-primary btn-small" data-action="open-manage" data-kind="playlist">Create a playlist</button></div></div>`;
     return;
   }
   const tracks = categories[selectedCategory] || [];
   if (!tracks.length) {
-    el.innerHTML = '<div class="empty"><span class="icon">🔗</span>No tracks yet. Paste a YouTube link below.</div>';
+    el.innerHTML = `<div class="empty"><span class="icon">🔗</span>No tracks yet in this playlist.<div class="empty-actions"><button class="btn-primary btn-small" data-action="open-add-track">+ Add tracks</button></div></div>`;
     return;
   }
   const cat = selectedCategory;
   const query = state.trackQuery.trim().toLowerCase();
   const rows = tracks.map((t, i) => ({t, i})).filter(({t}) => matchesQuery(query, t.title, t.url));
   if (!rows.length) {
-    el.innerHTML = `<div class="empty"><span class="icon">🔎</span>Nothing matches “${esc(state.trackQuery.trim())}” in this category.</div>`;
+    el.innerHTML = `<div class="empty"><span class="icon">🔎</span>Nothing matches “${esc(state.trackQuery.trim())}” in this playlist.<div class="empty-actions"><button class="btn-ghost btn-small" data-action="clear-track-search">Clear search</button></div></div>`;
     return;
   }
   el.innerHTML = rows.map(({t, i}) => {

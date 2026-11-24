@@ -2,7 +2,7 @@
 import {$} from './core/dom.js';
 import {memory} from './core/memory.js';
 import {state, view} from './core/store.js';
-import {applyTheme} from './ui/themes.js';
+import {applyOptions, applyTheme, renderOptions} from './ui/themes.js';
 import {setDeckMode, setTrackMode, setupDropzone} from './ui/dialogs.js';
 import {loadGuilds, selectServerAndChannel} from './voice/voice.js';
 import {
@@ -27,6 +27,7 @@ async function init() {
   if (state.status.connected) await selectServerAndChannel(state.status.guild_id, state.status.channel_id);
   else await selectServerAndChannel(memory.get('guild'), memory.get('channel'));
   state.selectedCategory = memory.get('category');
+  state.deckFilter = memory.get('deckGroup') || 'all';
   await loadCategories();
   await loadDeck();
   setInterval(updateStatus, STATUS_INTERVAL);
@@ -35,6 +36,8 @@ async function init() {
 
 installEvents();
 applyTheme(memory.get('theme') || 'default');
+applyOptions();
+renderOptions();
 updateAddForm();
 setDeckMode('url');
 setTrackMode('url');

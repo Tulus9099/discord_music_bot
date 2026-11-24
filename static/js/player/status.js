@@ -4,7 +4,8 @@ import {state, view} from '../core/store.js';
 import {showToast} from '../ui/toast.js';
 
 export const STATUS_INTERVAL = 3000;
-export const PROGRESS_INTERVAL = 1000;
+export const PROGRESS_INTERVAL = 250;
+let shownFraction = 0; // where the playhead was drawn last time // smooth playhead; cheap, it only moves widths and classes
 
 function setToggle(id, on) {
   const btn = $(id);
@@ -18,9 +19,67 @@ export function renderProgress() {
   let elapsed = status.elapsed;
   if (elapsed != null && status.is_playing) elapsed += (Date.now() - state.statusReceivedAt) / 1000;
   if (duration) elapsed = Math.min(elapsed ?? 0, duration);
+  const fraction = duration ? (elapsed ?? 0) / duration : 0;
   $('elapsedTime').textContent = formatTime(elapsed);
-  $('durationTime').textContent = duration ? formatTime(duration) : '0:00';
-  $('progressFill').style.width = duration ? `${(elapsed / duration) * 100}%` : '0%';
+  $('durationTime').textContent = duration ? formatTime(duration) : '--:--';
+  const fill = $('progressFill');
+  const layer = $('waveformPlayed');
+  // Small steps glide; a jump (stop, new track, seek) is applied at once instead of sliding back.
+  const jump = Math.abs(fraction - shownFraction) > 0.05;
+  if (jump) {
+    fill.style.transition = 'none';
+    layer.style.transition = 'none';
+    fill.style.width = `${fraction * 100}%`;
+    layer.style.clipPath = `inset(0 ${(100 - fraction * 100).toFixed(3)}% 0 0)`;
+    void layer.offsetWidth; // apply the reset before the transition comes back
+    fill.style.transition = '';
+    layer.style.transition = '';
+  } else {
+    fill.style.width = `${fraction * 100}%`;
+    layer.style.clipPath = `inset(0 ${(100 - fraction * 100).toFixed(3)}% 0 0)`;
+  }
+  shownFraction = fraction;
+}
+
+// Fake but stable waveform for YouTube links: the same link always draws the same bars.
+export function decorativePeaks(url, count = 160) {
+  let seed = 0;
+  for (const ch of url) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const values = Array.from({length: count}, (_, i) =>
+    0.35 + 0.35 * Math.abs(Math.sin(i * 0.18 + random() * 3)) + 0.3 * random());
+  const top = Math.max(...values);
+  return values.map(v => v / top);
+}
+
+// Draws the waveform for the current track; uploaded sounds use their real peaks.
+async function ensureWaveform(track) {
+  const key = track ? (track.file ?? track.url) : null;
+  if (state.waveformKey === key) return;
+  state.waveformKey = key;
+  state.waveformPeaks = null;
+  drawWaveform(null);
+  if (!track) return;
+  if (track.file) {
+    const peaks = await api('GET', '/peaks/' + encodeURIComponent(track.file));
+    if (state.waveformKey !== key) return; // the track changed while we waited
+    state.waveformPeaks = Array.isArray(peaks) ? peaks : null;
+  } else {
+    state.waveformPeaks = decorativePeaks(track.url);
+  }
+  drawWaveform(state.waveformPeaks);
+}
+
+// The bar keeps its height with or without a track; without one it shows a flat line, so stop and start do not move the page.
+function drawWaveform(peaks) {
+  const values = peaks ?? Array(160).fill(0);
+  const bars = values.map(p => `<i style="--h:${(0.15 + 0.85 * p).toFixed(3)}"></i>`).join('');
+  $('waveform').innerHTML = bars;
+  $('waveformPlayed').innerHTML = peaks ? bars : '';
+  renderProgress();
 }
 
 function renderUpNext() {
@@ -44,6 +103,7 @@ export function showSkeletons() {
 // Draws the player bar and the now-playing text (lists are drawn by updateStatus).
 function renderStatus() {
   const s = state.status;
+  ensureWaveform(s.current_track);
   $('statusDot').className = 'dot' + (s.connected ? ' connected' : '');
   $('channelInfo').textContent = s.channel_name ? '🔊 ' + s.channel_name : (s.connected ? 'Connected' : '');
 

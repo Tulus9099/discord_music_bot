@@ -1071,3 +1071,117 @@ def test_deck_groups_add_list_delete(client):
     assert client.delete("/api/deck/groups/Tawerna", json={}).get_json() == {"ok": True}
     assert client.get("/api/deck/groups").get_json() == []
     assert "group" not in client.get("/api/deck").get_json()[0]  # the tile stays, just ungrouped
+
+
+# ---------- Manage playlists and groups (rename, colour, delete) ----------
+
+def test_rename_playlist_keeps_tracks_colour_and_order(client, container):
+    client.post("/api/categories", json={"name": "tavern"})
+    client.post("/api/categories", json={"name": "boss fight"})
+    client.put("/api/categories/combat_music", json={"color": "#FF5D8F"})
+    tracks = client.get("/api/categories").get_json()["ambient_music"]
+    assert client.put("/api/categories/combat_music", json={"name": " Battle Music "}).get_json() == {"ok": True}
+    # Responses are sorted by Flask, so the stored order is checked on the repository.
+    assert list(container.playlists.categories()) == ["battle_music", "ambient_music", "storm_music", "tavern", "boss_fight"]
+    assert client.get("/api/categories").get_json()["ambient_music"] == tracks
+    assert client.get("/api/categories/colors").get_json() == {"battle_music": "#ff5d8f"}
+
+
+def test_rename_playlist_moves_its_tracks(client, monkeypatch):
+    client.post("/api/categories/storm_music/tracks", json={"url": YT_URL, "title": "Burza"})
+    client.put("/api/categories/storm_music", json={"name": "storm_sounds"})
+    assert client.get("/api/categories").get_json()["storm_sounds"] == [{"url": YT_URL, "title": "Burza"}]
+    assert "storm_music" not in client.get("/api/categories").get_json()
+
+
+@pytest.mark.parametrize("name", ["", "   ", "<b>x</b>", "../etc", "x" * 51])
+def test_rename_playlist_rejects_invalid_names(client, name):
+    r = client.put("/api/categories/combat_music", json={"name": name})
+    assert r.status_code == 400
+    assert "combat_music" in client.get("/api/categories").get_json()
+
+
+def test_rename_playlist_rejects_duplicate_and_missing(client):
+    r = client.put("/api/categories/combat_music", json={"name": "Storm Music"})
+    assert r.status_code == 400 and r.get_json()["message"] == "Already exists"
+    assert client.put("/api/categories/nope", json={"name": "fresh"}).status_code == 404
+    assert client.put("/api/categories/combat_music", json={}).status_code == 400
+
+
+def test_playlist_colour_set_validate_and_clear(client):
+    assert client.put("/api/categories/combat_music", json={"color": "#3DDC97"}).get_json() == {"ok": True}
+    assert client.get("/api/categories/colors").get_json() == {"combat_music": "#3ddc97"}
+    assert client.put("/api/categories/combat_music", json={"color": "green"}).status_code == 400
+    assert client.put("/api/categories/combat_music", json={"color": "#12345"}).status_code == 400
+    assert client.put("/api/categories/nope", json={"color": "#3ddc97"}).status_code == 404
+    assert client.put("/api/categories/combat_music", json={"color": None}).get_json() == {"ok": True}
+    assert client.get("/api/categories/colors").get_json() == {}
+    # The category shape itself never changes.
+    assert set(client.get("/api/categories").get_json()) == {"combat_music", "ambient_music", "storm_music"}
+
+
+def test_delete_playlist_removes_its_colour(client):
+    client.put("/api/categories/storm_music", json={"color": "#4cc9f0"})
+    assert client.delete("/api/categories/storm_music", json={}).get_json()["ok"] is True
+    assert client.get("/api/categories/colors").get_json() == {}
+
+
+def test_rename_group_updates_tiles_and_list(client):
+    client.post("/api/deck/groups", json={"name": "Tawerna"})
+    client.post("/api/deck", json={"url": YT_URL, "label": "Gong", "group": "Tawerna"})
+    client.post("/api/deck", json={"url": YT_URL, "label": "Brzęk"})
+    assert client.put("/api/deck/groups/Tawerna", json={"name": " Karczma "}).get_json() == {"ok": True}
+    assert client.get("/api/deck/groups").get_json() == ["Karczma"]
+    tiles = client.get("/api/deck").get_json()
+    assert tiles[0]["group"] == "Karczma" and "group" not in tiles[1]
+
+
+def test_rename_group_rejects_bad_duplicate_and_missing(client):
+    client.post("/api/deck/groups", json={"name": "Tawerna"})
+    client.post("/api/deck/groups", json={"name": "Walka"})
+    assert client.put("/api/deck/groups/Tawerna", json={"name": "   "}).status_code == 400
+    assert client.put("/api/deck/groups/Tawerna", json={"name": "x" * 31}).status_code == 400
+    assert client.put("/api/deck/groups/Tawerna", json={"name": "Walka"}).status_code == 400
+    assert client.put("/api/deck/groups/Nope", json={"name": "Fresh"}).status_code == 404
+    assert client.get("/api/deck/groups").get_json() == ["Tawerna", "Walka"]
+
+
+def test_group_colour_set_validate_clear_and_rename_moves_it(client):
+    client.post("/api/deck/groups", json={"name": "Tawerna"})
+    assert client.put("/api/deck/groups/Tawerna", json={"color": "#FF6B6B"}).get_json() == {"ok": True}
+    assert client.get("/api/deck/groups/colors").get_json() == {"Tawerna": "#ff6b6b"}
+    assert client.put("/api/deck/groups/Tawerna", json={"color": "red"}).status_code == 400
+    assert client.put("/api/deck/groups/Tawerna", json={"color": "#12345"}).status_code == 400
+    assert client.put("/api/deck/groups/Tawerna", json={"name": "Karczma"}).get_json() == {"ok": True}
+    assert client.get("/api/deck/groups/colors").get_json() == {"Karczma": "#ff6b6b"}
+    assert client.put("/api/deck/groups/Karczma", json={"color": None}).get_json() == {"ok": True}
+    assert client.get("/api/deck/groups/colors").get_json() == {}
+
+
+def test_delete_group_removes_its_colour(client):
+    client.post("/api/deck/groups", json={"name": "Tawerna"})
+    client.put("/api/deck/groups/Tawerna", json={"color": "#06d6a0"})
+    assert client.delete("/api/deck/groups/Tawerna", json={}).get_json() == {"ok": True}
+    assert client.get("/api/deck/groups/colors").get_json() == {}
+
+
+def test_manage_routes_require_json_csrf(client):
+    r = client.put("/api/categories/combat_music", data="name=x", content_type="text/plain")
+    assert r.status_code == 415
+    r = client.put("/api/deck/groups/Tawerna", data="name=x", content_type="text/plain")
+    assert r.status_code == 415
+
+
+def test_new_sound_can_carry_a_colour(client, container, monkeypatch, tmp_path):
+    import io
+    monkeypatch.setattr(container.sounds, "directory", str(tmp_path))
+    client.post("/api/deck", json={"url": YT_URL, "label": "Gong", "color": "#FF5D8F"})
+    assert client.get("/api/deck").get_json()[0]["color"] == "#ff5d8f"
+    assert client.post("/api/deck", json={"url": YT_URL, "label": "X", "color": "red"}).status_code == 400
+    r = client.post("/api/deck/upload", data={"file": (io.BytesIO(b"x"), "a.mp3"), "color": "#118ab2"},
+                    content_type="multipart/form-data", headers={"X-Requested-With": "panel"})
+    assert r.get_json() == {"ok": True}
+    assert client.get("/api/deck").get_json()[1]["color"] == "#118ab2"
+    r = client.post("/api/deck/upload", data={"file": (io.BytesIO(b"x"), "b.mp3"), "color": "blue"},
+                    content_type="multipart/form-data", headers={"X-Requested-With": "panel"})
+    assert r.status_code == 400

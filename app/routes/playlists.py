@@ -5,20 +5,34 @@ from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
 from app.container import current_container
-from app.validation import json_body
+from app.validation import is_valid_colour, json_body
 from config import MAX_TITLE_LENGTH
 from services.tracks import (
     TrackError, is_stored_sound, is_valid_track_url, read_track_edit, resolve_tracks, sound_error, store_upload,
 )
+from storage.playlists import UNSET
 
 bp = Blueprint("playlists", __name__, url_prefix="/api")
 
 CATEGORY_NAME_RE = re.compile(r"^[a-z0-9_-]{1,50}$")
 
 
+def normalise_category_name(value):
+    """Returns the playlist name as it is stored (stripped, spaces to underscores, lower case), or None if invalid."""
+    if not isinstance(value, str):
+        return None
+    name = value.strip().replace(" ", "_").lower()
+    return name if CATEGORY_NAME_RE.match(name) else None
+
+
 @bp.route("/categories", methods=["GET"])
 def categories():
     return jsonify(current_container().playlists.categories())
+
+
+@bp.route("/categories/colors", methods=["GET"])
+def category_colors():
+    return jsonify(current_container().playlists.category_colors())
 
 
 @bp.route("/categories", methods=["POST"])
@@ -34,6 +48,31 @@ def add_category():
         return jsonify({"ok": False, "message": "Use only letters, digits, spaces, - and _ (max 50)"}), 400
     ok = c.playlists.add_category(name)
     return jsonify({"ok": ok, "message": "Category added" if ok else "Already exists"})
+
+
+@bp.route("/categories/<name>", methods=["PUT"])
+def update_category(name):
+    """Renames a playlist ({"name": new}) and/or sets its colour ({"color": "#rrggbb" or null})."""
+    c = current_container()
+    if not c.playlists.category_exists(name):
+        return jsonify({"ok": False, "message": "Playlist not found"}), 404
+    data = json_body()
+    if "name" not in data and "color" not in data:
+        return jsonify({"ok": False, "message": "Nothing to change"}), 400
+    new_name = None
+    if "name" in data:
+        new_name = normalise_category_name(data["name"])
+        if new_name is None:
+            return jsonify({"ok": False, "message": "Use only letters, digits, spaces, - and _ (max 50)"}), 400
+    color = data.get("color", UNSET)
+    if color is not UNSET and color is not None:
+        if not is_valid_colour(color):
+            return jsonify({"ok": False, "message": "Colour must look like #7c6cff"}), 400
+        color = color.lower()
+    result = c.playlists.update_category(name, new_name, color)
+    if result == "taken":
+        return jsonify({"ok": False, "message": "Already exists"}), 400
+    return jsonify({"ok": result == "ok"})
 
 
 @bp.route("/categories/<name>", methods=["DELETE"])

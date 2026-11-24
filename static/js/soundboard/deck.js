@@ -1,4 +1,6 @@
-import {$, esc, hueOf, matchesQuery, shade} from '../core/dom.js';
+import {$, esc, hueOf, matchesQuery, shade, tintClass, tintStyle} from '../core/dom.js';
+import {colourPicker} from '../ui/themes.js';
+import {memory} from '../core/memory.js';
 import {api, uploadTile} from '../core/api.js';
 import {state} from '../core/store.js';
 import {showToast} from '../ui/toast.js';
@@ -33,32 +35,34 @@ function tileEditor(tile) {
 
 // Re-rendering only when something changed keeps open menus and typed text intact between polls.
 export function renderDeck(force = false) {
+  // Same two entries as the playlist menu: add, then manage.
+  $('deckMenu').innerHTML = moreMenu('deck:menu', [
+    {action: 'open-add-sound', label: '＋ Add sounds', data: {}},
+    {action: 'open-manage', label: '✎ Manage groups', data: {kind: 'group'}},
+  ]);
+
   const deck = state.deck;
   const groups = deckGroups();
   const hasUngrouped = deck.some(t => !t.group);
   // Fall back to "all" when the chosen group no longer exists.
-  if (!groups.length) state.deckFilter = 'all';
-  else if (state.deckFilter === '' && !hasUngrouped) state.deckFilter = 'all';
-  else if (state.deckFilter !== 'all' && state.deckFilter !== '' && !groups.includes(state.deckFilter)) state.deckFilter = 'all';
+  // Before the first load the saved group is not known yet, so keep it.
+  const loaded = state.deck.length > 0 || state.deckGroupsStored.length > 0;
+  if (loaded && !groups.length) state.deckFilter = 'all';
+  else if (loaded && state.deckFilter === '' && !hasUngrouped) state.deckFilter = 'all';
+  else if (loaded && state.deckFilter !== 'all' && state.deckFilter !== '' && !groups.includes(state.deckFilter)) state.deckFilter = 'all';
   const deckFilter = state.deckFilter;
 
-  const key = JSON.stringify([state.deck, state.deckGroupsStored, state.status.sounds ?? [], state.editing, state.openMenu, state.deckFilter, state.deckQuery]);
+  const key = JSON.stringify([state.deck, state.deckGroupsStored, state.groupColors, state.status.sounds ?? [], state.editing, state.openMenu, state.deckFilter, state.deckQuery]);
   if (!force && key === state.deckKey) return;
   state.deckKey = key;
 
-  const namedGroup = state.deckFilter !== 'all' && state.deckFilter !== '';
-  $('deckMenu').innerHTML = moreMenu('deck:actions', [
-    {action: 'open-add-sound', label: '＋ Add sounds', data: {}},
-    {action: 'deck-group-new', label: '＋ New group', data: {}},
-    ...(namedGroup ? [{action: 'delete-group', label: '🗑 Delete this group', danger: true, data: {group: state.deckFilter}}] : []),
-  ]);
 
 
   const tabs = [{key: 'all', label: 'All'}, ...groups.map(g => ({key: g, label: g}))];
-  if (groups.length && hasUngrouped) tabs.push({key: '', label: 'Other'});
+  // Chips only select a group; create, rename, colour and delete live in the ⋮ menu and the manage dialog.
   $('deckTabs').innerHTML = tabs.map(t => `
-      <button class="tab ${deckFilter === t.key ? 'active' : ''}" role="tab" aria-selected="${deckFilter === t.key}" data-action="deck-filter" data-group="${esc(t.key)}">${esc(t.label)}</button>`).join('')
-    + '<button class="tab tab-add" role="tab" aria-selected="false" data-action="deck-group-new" title="Add a group">+ New</button>';
+      <button class="tab ${tintClass(state.groupColors, t.key)} ${deckFilter === t.key ? 'active' : ''}" ${tintStyle(state.groupColors, t.key)} role="tab" aria-selected="${deckFilter === t.key}" data-action="deck-filter" data-group="${esc(t.key)}">${esc(t.label)}</button>`).join('')
+    ;
   $('groupList').innerHTML = groups.map(g => `<option value="${esc(g)}"></option>`).join('');
 
   const playing = new Set(state.status.sounds ?? []);
@@ -69,9 +73,9 @@ export function renderDeck(force = false) {
     .filter(({tile}) => matchesQuery(query, tile.title, tile.group));
 
   $('deckGrid').innerHTML = !deck.length
-    ? '<div class="empty" style="grid-column:1/-1"><span class="icon">🥁</span>No sounds yet. Add a YouTube link or a file below.</div>'
+    ? '<div class="empty" style="grid-column:1/-1"><span class="icon">🥁</span>No sounds yet.<div class="empty-actions"><button class="btn-primary btn-small" data-action="open-add-sound">+ Add sounds</button></div></div>'
     : !visible.length
-      ? '<div class="empty" style="grid-column:1/-1"><span class="icon">🏷️</span>No sounds match here. Try another group or search.</div>'
+      ? '<div class="empty" style="grid-column:1/-1"><span class="icon">🏷️</span>No sounds match here.<div class="empty-actions"><button class="btn-primary btn-small" data-action="open-add-sound">+ Add sounds</button></div></div>'
       : visible.map(({tile, i}) => {
         const id = tile.file || tile.url;
         const on = playing.has(id);
@@ -94,9 +98,10 @@ export function renderDeck(force = false) {
 }
 
 export async function loadDeck() {
-  const [tiles, groups] = await Promise.all([api('GET', '/deck'), api('GET', '/deck/groups')]);
+  const [tiles, groups, colors] = await Promise.all([api('GET', '/deck'), api('GET', '/deck/groups'), api('GET', '/deck/groups/colors')]);
   if (Array.isArray(tiles)) state.deck = tiles;
   if (Array.isArray(groups)) state.deckGroupsStored = groups;
+  if (colors && typeof colors === 'object') state.groupColors = colors;
   renderDeck(true);
 }
 
@@ -120,6 +125,13 @@ export async function saveTileEdit() {
 }
 
 // Sound modal: a file is uploaded, a link is sent as JSON.
+let addColor = null; // colour chosen in the sound dialog, sent with the add
+
+export function setAddColor(color) {
+  addColor = color || null;
+  $('deckColorRow').innerHTML = colourPicker(addColor, 'add-color');
+}
+
 export async function deckAdd() {
   const soundLabel = $('deckLabel').value.trim();
   const group = $('deckGroup').value.trim();
@@ -131,12 +143,13 @@ export async function deckAdd() {
     form.append('file', file);
     form.append('label', soundLabel);
     form.append('group', group);
+    if (addColor) form.append('color', addColor);
     r = await uploadTile(form);
   } else {
     const urlInput = $('deckUrl');
     const url = urlInput.value.trim();
     if (!url) { showToast('Paste a YouTube link first', false); urlInput.focus(); return; }
-    r = await api('POST', '/deck', {url, label: soundLabel, group});
+    r = await api('POST', '/deck', {url, label: soundLabel, group, color: addColor});
   }
   if (r?.ok) {
     $('deckUrl').value = '';
@@ -174,33 +187,18 @@ export function openAddSound() {
   sel.innerHTML = '<option value="">No group</option>' + groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
   sel.value = groups.includes(state.deckFilter) ? state.deckFilter : '';
   setDeckMode(state.deckMode);
+  setAddColor(null);
   const d = $('deckAdd');
   if (!d.open) d.showModal();
   (state.deckMode === 'file' ? $('deckDrop') : $('deckUrl')).focus();
 }
 
-export async function addGroup() {
-  const input = $('newGroupInput');
-  const name = input.value.trim();
-  if (!name) { input.focus(); return; }
-  const r = await api('POST', '/deck/groups', {name});
-  if (r?.ok) {
-    input.value = '';
-    $('deckGroupAdd').hidden = true;
-    state.deckFilter = name;
-    showToast('Group added');
-    await loadDeck();
-  } else if (r) {
-    showToast(r.message, false);
-  }
-}
-
-// Removing a group keeps its sounds; they just move to "Other".
+// Removing a group keeps its sounds; they stay on the soundboard without a group.
 export async function deleteGroup(name) {
   if (!confirm(`Delete the group "${name}"? Its sounds stay on the soundboard.`)) return;
   const r = await api('DELETE', '/deck/groups/' + encodeURIComponent(name));
   if (!r?.ok) return;
-  if (state.deckFilter === name) state.deckFilter = 'all';
+  if (state.deckFilter === name) { state.deckFilter = 'all'; memory.set('deckGroup', null); }
   showToast('Group deleted');
   await loadDeck();
 }

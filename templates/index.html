@@ -54,7 +54,7 @@
       </div>
 
       <div>
-        <div class="progress-bar" id="progressBar" role="presentation" title="Click to jump to this point"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-bar wave" id="progressBar" role="presentation" title="Click to jump to this point"><div class="waveform" id="waveform"></div><div class="waveform played-layer" id="waveformPlayed" aria-hidden="true"></div><div class="progress-fill" id="progressFill"></div></div>
         <div class="progress-times"><span id="elapsedTime">0:00</span><span id="durationTime">0:00</span></div>
       </div>
 
@@ -119,10 +119,6 @@
           </div>
         </dialog>
         <div class="chips" id="categoryTabs" role="tablist" aria-label="Categories"></div>
-        <div class="cat-add" id="catAdd" hidden>
-          <input type="text" id="newCatInput" placeholder="New category, e.g. tavern" aria-label="New category name" maxlength="50" />
-          <button class="btn-primary btn-small" data-action="add-category">Add category</button>
-        </div>
         <div class="bulk" id="bulkBar" hidden>
           <span id="bulkCount" class="bulk-count"></span>
           <div class="bulk-targets" id="bulkTargets"></div>
@@ -146,7 +142,8 @@
               <button class="btn-ghost btn-icon" data-action="close-add-sound" aria-label="Close">✕</button>
             </div>
             <div class="modal-body">
-          <label class="field">
+          <div class="field-block" id="deckColorRow"></div>
+              <label class="field">
             <span class="field-label">Group</span>
             <select id="deckGroup" aria-label="Group for the sounds"></select>
           </label>
@@ -178,10 +175,6 @@
             </div>
           </dialog>
           <div class="chips" id="deckTabs" role="tablist" aria-label="Soundboard groups"></div>
-          <div class="cat-add" id="deckGroupAdd" hidden>
-            <input type="text" id="newGroupInput" placeholder="New group, e.g. tavern" aria-label="New group name" maxlength="30" />
-            <button class="btn-primary btn-small" data-action="add-group">Add group</button>
-          </div>
           <div class="deck-grid" id="deckGrid"></div>
           <div id="tileEdit"></div>
         </section>
@@ -190,6 +183,25 @@
   </main>
 </div>
 
+<dialog class="modal" id="manageDialog" aria-labelledby="manageTitle">
+  <div class="modal-head">
+    <div><h3 id="manageTitle">Manage playlists</h3><span class="hint" id="manageHint"></span></div>
+    <button class="btn-ghost btn-icon" data-action="close-manage" aria-label="Close">✕</button>
+  </div>
+  <div class="modal-body">
+    <div class="manage-list" id="manageList"></div>
+    <div class="field">
+      <span class="field-label">New name</span>
+      <div class="manage-line">
+        <input type="text" id="manageNew" aria-label="New name" placeholder="New name" />
+        <button class="btn-primary btn-small" data-action="manage-add">Add</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn-ghost btn-small" data-action="close-manage">Close</button>
+  </div>
+</dialog>
 <datalist id="groupList"></datalist>
 <button class="gear" id="gearBtn" data-action="style-toggle" aria-label="Style settings" aria-expanded="false" aria-controls="stylePanel" title="Style">
   <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -197,6 +209,8 @@
 <div class="style-panel" id="stylePanel" hidden>
   <h2>Style</h2>
   <div class="themes" id="themeList"></div>
+  <h2 class="panel-sub">Options</h2>
+  <div class="tint-options" id="optionList"></div>
 </div>
 <output class="toast hidden" id="toast" aria-live="polite"></output>
 

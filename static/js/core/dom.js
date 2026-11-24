@@ -15,6 +15,21 @@ export function label(name) {
   return name.replaceAll('_', ' ');
 }
 
+// The colour a playlist or group has, or null for automatic. Own keys only, so a name like "constructor" is safe.
+export function colorOf(colors, name) {
+  return Object.hasOwn(colors, name) ? colors[name] : null;
+}
+
+// A chip takes its playlist or group colour.
+export function tintClass(colors, name) {
+  return colorOf(colors, name) ? 'tinted' : '';
+}
+
+export function tintStyle(colors, name) {
+  const color = colorOf(colors, name);
+  return color ? `style="--c:${esc(color)}"` : '';
+}
+
 export function formatTime(seconds) {
   if (seconds == null || !Number.isFinite(seconds)) return '0:00';
   const total = Math.max(0, Math.floor(seconds));
